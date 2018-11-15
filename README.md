@@ -7,7 +7,7 @@ transferred among registered accounts (but not the identities transacting accoun
 
 ## Implementation details
 
-The service uses [pure Rust implementation][bulletproofs-rs] for [Bulletproofs][bulleproofs], a technique allowing
+The service uses [pure Rust implementation][bulletproofs-rs] for [Bulletproofs][bulletproofs], a technique allowing
 to prove a range of a value hidden with the help of the [Pedersen commitment scheme][pedersen]. Commitments are used
 instead of cleartext values both in account details and in transfer transactions.
 
@@ -34,8 +34,8 @@ in the allowed range.
 ### Transfer acceptance
 
 A natural question is how the receiver of the payment finds out about its amount `a`; by design, it is impossible
-using only blockchain information. We solve this by asymmetrically encrypting the opening to `C_a`
-- i.e., pair `(a, r)` - with the help of `box` routine from `libsodium`, so it can only be decrypted by the
+using only blockchain information. We solve this by asymmetrically encrypting the opening to `C_a` - i.e.,
+pair `(a, r)` - with the help of `box` routine from `libsodium`, so it can only be decrypted by the
 receiver and sender of the transfer. For simplicity, we convert Ed25519 keys used to sign transactions
 to Curve25519 keys required for `box`; i.e., accounts are identified by a single Ed25519 public key.
 
@@ -49,8 +49,17 @@ cleartext values). The _receiver's balance_ is not changed immediately; it is on
 (again, using commitment arithmetic) only after her appropriate acceptance transaction is committed.
 
 To prevent deadlocks, each transfer transaction specifies the timelock parameter (in relative blockchain height,
-a la Bitcoin's `CSV`). If this timelock expires and the receiver of the transfer still hasn't accepted it,
+a la Bitcoin's `CSV` opcode). If this timelock expires and the receiver of the transfer still hasn't accepted it,
 the transfer is automatically refunded to the sender.
+
+## TODO list
+
+- [ ] Check `a > 0` instead of `a >= 0` in transfers
+- [ ] Allow to reference a past commitment to sender's balance (but not before the latest outgoing transfer)
+  in order to boost concurrency
+- [ ] Merkelize storage data
+- [ ] Index unaccepted transfers by blockchain height and filter them correspondingly in API
+- [ ] Test more stuff
 
 ## Building and testing
 
