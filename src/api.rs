@@ -5,22 +5,31 @@ use exonum::{
     blockchain::{Schema as CoreSchema, Transaction},
     crypto::{Hash, PublicKey},
     helpers::Height,
-    messages::Message,
     storage::Snapshot,
 };
 
 use storage::{maybe_create_wallet, maybe_transfer, Event, EventTag, Schema, Wallet};
 use transactions::{CreateWallet, CryptoTransactions, Transfer};
 
+/// HTTP API for the private cryptocurrency service.
 #[derive(Debug)]
 pub enum Api {}
 
+/// Query for `wallet` and `unaccepted_transfers` endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletQuery {
+    /// Public key of the account to check.
     pub key: PublicKey,
+
+    /// The starting point of historic information.
+    ///
+    /// For the `wallet` endpoint, this is the starting index for the user's list of events.
+    /// For `unaccepted_transfers`, this value is the minimum blockchain height for
+    /// unaccepted transfers to the user that should be fetched.
     pub start_history_at: Option<u32>,
 }
 
+/// Event changing balance of a wallet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename = "kebab-case")]
 pub enum FullEvent {
@@ -87,17 +96,13 @@ impl Api {
             return Err(api::Error::NotFound("wallet".to_owned()));
         }
 
-        let core_schema = CoreSchema::new(&snapshot);
-        let transactions = core_schema.transactions();
         let transfers: Vec<_> = schema
             .unaccepted_transfers(&query.key)
             .into_iter()
-            .map(|hash| {
-                let transaction = transactions.get(&hash).expect("transaction");
-                Transfer::from_raw(transaction).expect("Transfer")
-            }).collect();
+            .map(|hash| maybe_transfer(&snapshot, &hash).expect("Transfer"))
+            .collect();
         Ok(UnacceptedTransfers {
-            height: core_schema.height(),
+            height: CoreSchema::new(&snapshot).height(),
             transfers,
         })
     }
