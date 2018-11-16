@@ -12,7 +12,7 @@ use crypto::{
     enc,
     proofs::{Commitment, Opening, SimpleRangeProof},
 };
-use storage::{Schema, Wallet};
+use storage::{maybe_transfer, Schema, Wallet};
 
 encoding_struct! {
     struct EncryptedData {
@@ -354,8 +354,13 @@ impl Transaction for Accept {
     }
 
     fn execute(&self, fork: &mut Fork) -> Result<(), ExecutionError> {
+        let transfer = maybe_transfer(&fork, self.transfer_id()).ok_or(Error::UnknownTransfer)?;
+        if transfer.to() != self.receiver() {
+            Err(Error::UnauthorizedAccept)?;
+        }
+
         let mut schema = Schema::new(fork);
-        schema.accept_payment(self.receiver(), self.transfer_id())?;
+        schema.accept_payment(&transfer, self.transfer_id())?;
         Ok(())
     }
 }
@@ -368,6 +373,7 @@ pub enum Error {
     UnregisteredReceiver = 4,
     IncorrectProof = 5,
     UnknownTransfer = 6,
+    UnauthorizedAccept = 7,
 }
 
 impl From<Error> for ExecutionError {

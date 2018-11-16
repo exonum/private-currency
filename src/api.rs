@@ -9,7 +9,7 @@ use exonum::{
     storage::Snapshot,
 };
 
-use storage::{Event, EventTag, Schema, Wallet};
+use storage::{maybe_create_wallet, maybe_transfer, Event, EventTag, Schema, Wallet};
 use transactions::{CreateWallet, CryptoTransactions, Transfer};
 
 #[derive(Debug)]
@@ -31,21 +31,16 @@ pub enum FullEvent {
 
 impl FullEvent {
     fn from<T: AsRef<dyn Snapshot>>(event: Event, snapshot: T) -> Self {
-        let schema = CoreSchema::new(snapshot);
-        let transaction = schema
-            .transactions()
-            .get(event.transaction_hash())
-            .expect("transaction");
-
+        let id = event.transaction_hash();
         match event.tag() {
             tag if tag == EventTag::CreateWallet as u8 => {
-                FullEvent::CreateWallet(CreateWallet::from_raw(transaction).expect("CreateWallet"))
+                FullEvent::CreateWallet(maybe_create_wallet(snapshot, id).expect("CreateWallet"))
             }
             tag if tag == EventTag::Transfer as u8 => {
-                FullEvent::Transfer(Transfer::from_raw(transaction).expect("CreateWallet"))
+                FullEvent::Transfer(maybe_transfer(snapshot, id).expect("Transfer"))
             }
             tag if tag == EventTag::Rollback as u8 => {
-                FullEvent::Rollback(Transfer::from_raw(transaction).expect("CreateWallet"))
+                FullEvent::Rollback(maybe_transfer(snapshot, id).expect("Transfer"))
             }
             _ => unreachable!(),
         }
@@ -95,7 +90,7 @@ impl Api {
         let core_schema = CoreSchema::new(&snapshot);
         let transactions = core_schema.transactions();
         let transfers: Vec<_> = schema
-            .unaccepted_payments(&query.key)
+            .unaccepted_transfers(&query.key)
             .into_iter()
             .map(|hash| {
                 let transaction = transactions.get(&hash).expect("transaction");

@@ -8,6 +8,8 @@ use exonum::{
     storage::{Fork, KeySetIndex, ProofListIndex, ProofMapIndex, Snapshot},
 };
 
+use std::collections::HashSet;
+
 use crypto::{enc, proofs::Commitment};
 use transactions::{CreateWallet, Error, Transfer};
 
@@ -28,6 +30,7 @@ encoding_struct! {
 }
 
 encoding_struct! {
+    #[derive(Eq, Hash)]
     struct Event {
         tag: u8,
         transaction_hash: &Hash,
@@ -70,6 +73,24 @@ impl Wallet {
     }
 }
 
+pub(crate) fn maybe_create_wallet<T>(view: T, id: &Hash) -> Option<CreateWallet>
+where
+    T: AsRef<dyn Snapshot>,
+{
+    let core_schema = CoreSchema::new(view);
+    let transaction = core_schema.transactions().get(id)?;
+    CreateWallet::from_raw(transaction).ok()
+}
+
+pub(crate) fn maybe_transfer<T>(view: T, id: &Hash) -> Option<Transfer>
+where
+    T: AsRef<dyn Snapshot>,
+{
+    let core_schema = CoreSchema::new(view);
+    let transaction = core_schema.transactions().get(id)?;
+    Transfer::from_raw(transaction).ok()
+}
+
 #[derive(Debug)]
 pub struct Schema<T> {
     inner: T,
@@ -96,7 +117,7 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
         ProofMapIndex::new_in_family(UNACCEPTED_PAYMENTS, key, &self.inner)
     }
 
-    pub fn unaccepted_payments(&self, key: &PublicKey) -> Vec<Hash> {
+    pub fn unaccepted_transfers(&self, key: &PublicKey) -> HashSet<Hash> {
         let index = self.unaccepted_payments_index(key);
         let hashes = index.keys().collect();
         hashes
@@ -121,12 +142,6 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
         let index = self.rollback_index(height);
         let hashes = index.iter().collect();
         hashes
-    }
-
-    fn transfer_with_untrusted_id(&self, hash: &Hash) -> Option<Transfer> {
-        let core_schema = CoreSchema::new(&self.inner);
-        let transaction = core_schema.transactions().get(hash)?;
-        Transfer::from_raw(transaction).ok()
     }
 }
 
@@ -199,14 +214,12 @@ impl<'a> Schema<&'a mut Fork> {
 
     pub(crate) fn accept_payment(
         &mut self,
-        receiver: &PublicKey,
+        transfer: &Transfer,
         transfer_id: &Hash,
     ) -> Result<(), Error> {
+        let receiver = transfer.to();
         // Update the receiver's wallet.
-        let transfer_amount = self
-            .transfer_with_untrusted_id(transfer_id)
-            .ok_or(Error::UnknownTransfer)?
-            .amount();
+        let transfer_amount = transfer.amount();
         {
             let mut wallets = self.wallets_mut();
             let receiver_wallet = wallets.get(receiver).ok_or(Error::UnregisteredReceiver)?;
@@ -225,7 +238,7 @@ impl<'a> Schema<&'a mut Fork> {
             payments.remove(transfer_id);
         }
 
-        // Remove the payment from the rollback index.
+        // Remove the transfer from the rollback index.
         let rollback_height = self.rollback_height(transfer_id);
         let mut rollback_set = self.rollback_index_mut(rollback_height);
         debug_assert!(rollback_set.contains(transfer_id));
