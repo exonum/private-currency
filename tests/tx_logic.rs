@@ -7,7 +7,7 @@ extern crate private_currency;
 
 use exonum::{
     blockchain::TransactionErrorType,
-    crypto::{self, CryptoHash},
+    crypto::{self, CryptoHash, Hash},
     helpers::Height,
 };
 use exonum_testkit::{TestKit, TestKitBuilder};
@@ -333,4 +333,34 @@ fn accept_several_transfers_in_multiple_blocks_unordered() {
         let block = testkit.create_block_with_transaction(accept_alice.to_owned());
         assert!(block.iter().all(|tx| tx.status().is_ok()));
     });
+}
+
+#[test]
+fn expired_transfers_are_removed_from_indexes() {
+    let mut testkit = create_testkit();
+    let mut alice_sec = SecretState::new();
+    let mut bob_sec = SecretState::new();
+    let bob_pk = *bob_sec.public_key();
+
+    testkit
+        .create_block_with_transactions(txvec![alice_sec.create_wallet(), bob_sec.create_wallet()]);
+    alice_sec.initialize();
+    bob_sec.initialize();
+
+    let transfer = alice_sec.create_transfer(1_000, &bob_pk, 5);
+    testkit.create_block_with_transaction(transfer.clone());
+    let schema = Schema::new(testkit.snapshot());
+    assert_eq!(schema.rollback_transfers(Height(7)).len(), 1);
+
+    // Wait until the transfer is rolled back.
+    testkit.create_blocks_until(Height(10));
+
+    let schema = Schema::new(testkit.snapshot());
+    assert_eq!(schema.history(&bob_pk).len(), 1);
+    assert!(schema.unaccepted_transfers(&bob_pk).is_empty());
+    assert!(schema.rollback_transfers(Height(6)).is_empty());
+    // As there are not unaccepted transfers now, the corresponding field in the Bob's wallet
+    // should be zeroed.
+    let bob_wallet = schema.wallet(&bob_pk).expect("Bob's wallet");
+    assert_eq!(*bob_wallet.unaccepted_transfers_hash(), Hash::zero());
 }

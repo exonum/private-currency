@@ -8,7 +8,7 @@ use exonum::{
     storage::{Fork, KeySetIndex, ProofListIndex, ProofMapIndex, Snapshot},
 };
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crypto::{enc, proofs::Commitment};
 use transactions::{CreateWallet, Error, Transfer};
@@ -337,10 +337,22 @@ impl<'a> Schema<&'a mut Fork> {
         let height = CoreSchema::new(&self.inner).height();
         let transfer_ids = self.rollback_transfers(height);
 
+        let mut updated_unaccepted_transfers = HashMap::new();
         for hash in &transfer_ids {
             let transfer = maybe_transfer(&self.inner, hash).expect("Transfer");
             self.rollback_single(&transfer, hash);
             self.rollback_index_mut(height).remove(hash);
+
+            let mut unaccepted_transfers = self.unaccepted_transfers_mut(transfer.to());
+            unaccepted_transfers.remove(hash);
+            updated_unaccepted_transfers.insert(*transfer.to(), unaccepted_transfers.merkle_root());
+        }
+
+        let mut wallets = self.wallets_mut();
+        for (key, hash) in updated_unaccepted_transfers {
+            let wallet = wallets.get(&key).expect("receiver's wallet");
+            let wallet = wallet.set_unaccepted_transfers_hash(&hash);
+            wallets.put(&key, wallet);
         }
 
         // FIXME: uncomment once https://github.com/exonum/exonum/pull/1042 lands.
