@@ -6,8 +6,11 @@ extern crate exonum;
 extern crate bulletproofs;
 extern crate curve25519_dalek as curve25519;
 extern crate exonum_sodiumoxide as sodiumoxide;
+extern crate failure;
 extern crate merlin;
 extern crate rand;
+#[macro_use]
+extern crate failure_derive;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
@@ -25,12 +28,15 @@ use std::ops::Range;
 
 pub mod api;
 pub mod crypto;
+mod secrets;
 pub mod storage;
 pub mod transactions;
+mod utils;
 
-use api::Api;
-use storage::Schema;
-use transactions::CryptoTransactions;
+pub use api::Api;
+pub use secrets::{SecretState, VerifiedTransfer};
+pub use storage::{Schema, Wallet};
+pub use transactions::CryptoTransactions as Transactions;
 
 pub const SERVICE_NAME: &str = "private_currency";
 pub const SERVICE_ID: u16 = 2_000;
@@ -59,7 +65,7 @@ impl bc::Service for Service {
 
     fn tx_from_raw(&self, raw: RawMessage) -> Result<Box<Transaction>, EncodingError> {
         use bc::TransactionSet;
-        CryptoTransactions::tx_from_raw(raw).map(|tx| tx.into())
+        Transactions::tx_from_raw(raw).map(|tx| tx.into())
     }
 
     fn before_commit(&self, fork: &mut Fork) {
@@ -70,7 +76,6 @@ impl bc::Service for Service {
         builder
             .public_scope()
             .endpoint("v1/wallet", Api::wallet)
-            .endpoint("v1/unaccepted", Api::unaccepted_transfers)
             .endpoint_mut("v1/transaction", Api::transaction);
     }
 }

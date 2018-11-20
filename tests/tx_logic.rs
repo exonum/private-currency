@@ -1,3 +1,5 @@
+//! Tests for transaction logic of the service.
+
 extern crate exonum;
 #[macro_use]
 extern crate exonum_testkit;
@@ -12,8 +14,8 @@ use exonum_testkit::{TestKit, TestKitBuilder};
 use private_currency::{
     crypto::proofs::Opening,
     storage::{Event, Schema},
-    transactions::{Accept, Error, SecretState},
-    Service as Currency, INITIAL_BALANCE,
+    transactions::{Accept, Error},
+    SecretState, Service as Currency, INITIAL_BALANCE,
 };
 
 use std::{collections::HashSet, iter::FromIterator};
@@ -52,7 +54,7 @@ fn create_2wallets_and_transfer_between_them() {
         vec![Event::create_wallet(&create_wallet_for_alice.hash())]
     );
     alice_sec.initialize();
-    assert_eq!(alice_sec.to_public(), alice);
+    assert_eq!(alice_sec.to_public(), alice.info());
 
     let transfer_amount = INITIAL_BALANCE / 3;
     let transfer = alice_sec.create_transfer(transfer_amount, &bob_sec.public_key(), 10);
@@ -83,7 +85,7 @@ fn create_2wallets_and_transfer_between_them() {
         ]
     );
     alice_sec.transfer(&transfer);
-    assert_eq!(alice_sec.to_public(), alice);
+    assert_eq!(alice_sec.to_public(), alice.info());
 
     // Check that Bob will be notified about the payment
     let hashes = schema.unaccepted_transfers(bob.public_key());
@@ -135,7 +137,10 @@ fn answering_payment() {
     // Seeing the `Accept` transaction confirmed, Bob can safely modify his state.
     bob_sec.transfer(&transfer);
     assert_eq!(bob_sec.balance(), INITIAL_BALANCE + transfer_amount);
-    let bob = schema.wallet(&bob_sec.public_key()).expect("Bob's wallet");
+    let bob = schema
+        .wallet(&bob_sec.public_key())
+        .expect("Bob's wallet")
+        .info();
     assert!(bob_sec.corresponds_to(&bob));
 }
 
@@ -176,7 +181,8 @@ fn automatic_rollback() {
     assert_eq!(alice_sec.balance(), INITIAL_BALANCE);
     let alice = schema
         .wallet(alice_sec.public_key())
-        .expect("Alice's wallet");
+        .expect("Alice's wallet")
+        .info();
     assert!(alice_sec.corresponds_to(&alice));
 }
 
@@ -282,7 +288,8 @@ where
     carol_sec.transfer(&transfer_from_bob);
     let carol_wallet = schema
         .wallet(&carol_sec.public_key())
-        .expect("Carol's wallet");
+        .expect("Carol's wallet")
+        .info();
     assert_eq!(carol_sec.balance(), INITIAL_BALANCE + 3_000);
     assert!(carol_sec.corresponds_to(&carol_wallet));
 }

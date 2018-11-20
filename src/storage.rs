@@ -26,6 +26,9 @@ encoding_struct! {
     struct Wallet {
         public_key: &PublicKey,
         balance: Commitment,
+        history_len: u64,
+        history_hash: &Hash,
+        unaccepted_transfers_hash: &Hash,
     }
 }
 
@@ -59,17 +62,62 @@ pub(crate) enum EventTag {
     Rollback = 2,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WalletInfo {
+    pub public_key: PublicKey,
+    pub balance: Commitment,
+}
+
+impl WalletInfo {
+    pub fn encryption_key(&self) -> enc::PublicKey {
+        enc::pk_from_ed25519(self.public_key)
+    }
+}
+
 impl Wallet {
+    fn initialize(key: &PublicKey, history_hash: &Hash) -> Self {
+        Wallet::new(key, INITIAL_BALANCE.clone(), 1, history_hash, &Hash::zero())
+    }
+
+    pub fn info(&self) -> WalletInfo {
+        WalletInfo {
+            public_key: *self.public_key(),
+            balance: self.balance(),
+        }
+    }
+
     pub fn encryption_key(&self) -> enc::PublicKey {
         enc::pk_from_ed25519(*self.public_key())
     }
 
-    pub fn subtract_balance(&self, difference: &Commitment) -> Self {
-        Wallet::new(self.public_key(), self.balance() - difference.clone())
+    fn subtract_balance(&self, difference: &Commitment, history_hash: &Hash) -> Self {
+        Wallet::new(
+            self.public_key(),
+            self.balance() - difference.clone(),
+            self.history_len() + 1,
+            history_hash,
+            self.unaccepted_transfers_hash(),
+        )
     }
 
-    pub fn add_balance(&self, difference: &Commitment) -> Self {
-        Wallet::new(self.public_key(), self.balance() + difference.clone())
+    fn add_balance(&self, difference: &Commitment, history_hash: &Hash) -> Self {
+        Wallet::new(
+            self.public_key(),
+            self.balance() + difference.clone(),
+            self.history_len() + 1,
+            history_hash,
+            self.unaccepted_transfers_hash(),
+        )
+    }
+
+    fn set_unaccepted_transfers_hash(&self, hash: &Hash) -> Self {
+        Wallet::new(
+            self.public_key(),
+            self.balance(),
+            self.history_len(),
+            self.history_hash(),
+            hash,
+        )
     }
 }
 
@@ -102,7 +150,7 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
     }
 
     pub fn state_hash(&self) -> Vec<Hash> {
-        vec![]
+        vec![self.wallets().merkle_root()]
     }
 
     pub fn wallets(&self) -> ProofMapIndex<&T, PublicKey, Wallet> {
@@ -113,12 +161,15 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
         self.wallets().get(public_key)
     }
 
-    fn unaccepted_payments_index(&self, key: &PublicKey) -> ProofMapIndex<&T, Hash, ()> {
+    pub(crate) fn unaccepted_transfers_index(
+        &self,
+        key: &PublicKey,
+    ) -> ProofMapIndex<&T, Hash, ()> {
         ProofMapIndex::new_in_family(UNACCEPTED_PAYMENTS, key, &self.inner)
     }
 
     pub fn unaccepted_transfers(&self, key: &PublicKey) -> HashSet<Hash> {
-        let index = self.unaccepted_payments_index(key);
+        let index = self.unaccepted_transfers_index(key);
         let hashes = index.keys().collect();
         hashes
     }
@@ -154,7 +205,7 @@ impl<'a> Schema<&'a mut Fork> {
         ProofListIndex::new_in_family(HISTORY, key, self.inner)
     }
 
-    fn unaccepted_payments_mut(&mut self, key: &PublicKey) -> ProofMapIndex<&mut Fork, Hash, ()> {
+    fn unaccepted_transfers_mut(&mut self, key: &PublicKey) -> ProofMapIndex<&mut Fork, Hash, ()> {
         ProofMapIndex::new_in_family(UNACCEPTED_PAYMENTS, key, self.inner)
     }
 
@@ -171,28 +222,39 @@ impl<'a> Schema<&'a mut Fork> {
         if self.wallets().contains(key) {
             return Err(Error::WalletExists);
         }
-        let wallet = Wallet::new(key, INITIAL_BALANCE.clone());
-        self.wallets_mut().put(key, wallet);
+
         self.history_index_mut(key)
             .push(Event::create_wallet(&tx.hash()));
+        let history_hash = self.history_index(key).merkle_root();
+        let wallet = Wallet::initialize(key, &history_hash);
+        self.wallets_mut().put(key, wallet);
         Ok(())
     }
 
     pub(crate) fn update_sender(&mut self, sender: &Wallet, amount: &Commitment, tx: &Transfer) {
-        let updated_sender = sender.subtract_balance(amount);
-        self.wallets_mut().put(sender.public_key(), updated_sender);
         let event = Event::transfer(&tx.hash());
         self.history_index_mut(sender.public_key()).push(event);
+        let history_hash = self.history_index(sender.public_key()).merkle_root();
+        let updated_sender = sender.subtract_balance(amount, &history_hash);
+        self.wallets_mut().put(sender.public_key(), updated_sender);
     }
 
     pub(crate) fn add_unaccepted_payment(&mut self, receiver: &Wallet, transfer: &Transfer) {
-        self.unaccepted_payments_mut(receiver.public_key())
-            .put(&transfer.hash(), ());
+        let unaccepted_transfers_hash = {
+            let mut unaccepted_transfers = self.unaccepted_transfers_mut(receiver.public_key());
+            unaccepted_transfers.put(&transfer.hash(), ());
+            unaccepted_transfers.merkle_root()
+        };
+
         let rollback_height =
             CoreSchema::new(&self.inner).height().next().0 + transfer.rollback_delay() as u64;
         let rollback_height = Height(rollback_height);
         self.rollback_index_mut(rollback_height)
             .insert(transfer.hash());
+
+        let receiver = receiver.set_unaccepted_transfers_hash(&unaccepted_transfers_hash);
+        let receiver_pk = *receiver.public_key();
+        self.wallets_mut().put(&receiver_pk, receiver);
     }
 
     fn rollback_height(&self, transfer_id: &Hash) -> Height {
@@ -218,24 +280,31 @@ impl<'a> Schema<&'a mut Fork> {
         transfer_id: &Hash,
     ) -> Result<(), Error> {
         let receiver = transfer.to();
+
+        let event = Event::transfer(transfer_id);
+        self.history_index_mut(receiver).push(event);
+        let history_hash = self.history_index(receiver).merkle_root();
+
+        // Remove the transfer from the unaccepted list.
+        let unaccepted_transfers_hash = {
+            let mut payments = self.unaccepted_transfers_mut(receiver);
+            if !payments.contains(transfer_id) {
+                return Err(Error::UnknownTransfer);
+            }
+            payments.remove(transfer_id);
+            payments.merkle_root()
+        };
+
         // Update the receiver's wallet.
         let transfer_amount = transfer.amount();
         {
             let mut wallets = self.wallets_mut();
             let receiver_wallet = wallets.get(receiver).ok_or(Error::UnregisteredReceiver)?;
-            let receiver_wallet = receiver_wallet.add_balance(&transfer_amount);
-            wallets.put(receiver, receiver_wallet);
-        }
-        let event = Event::transfer(transfer_id);
-        self.history_index_mut(receiver).push(event);
+            let receiver_wallet = receiver_wallet
+                .add_balance(&transfer_amount, &history_hash)
+                .set_unaccepted_transfers_hash(&unaccepted_transfers_hash);
 
-        // Remove the transfer from the unaccepted list.
-        {
-            let mut payments = self.unaccepted_payments_mut(receiver);
-            if !payments.contains(transfer_id) {
-                return Err(Error::UnknownTransfer);
-            }
-            payments.remove(transfer_id);
+            wallets.put(receiver, receiver_wallet);
         }
 
         // Remove the transfer from the rollback index.
@@ -248,17 +317,19 @@ impl<'a> Schema<&'a mut Fork> {
     }
 
     fn rollback_single(&mut self, transfer: &Transfer, transfer_hash: &Hash) {
+        // Update sender history.
+        let event = Event::rollback(transfer_hash);
+        self.history_index_mut(transfer.from()).push(event);
+        let history_hash = self.history_index(transfer.from()).merkle_root();
+
         {
             // Refund sender.
             let mut wallets = self.wallets_mut();
             let sender_wallet = wallets.get(transfer.from()).expect("sender");
             let amount = transfer.amount();
-            let sender_wallet = sender_wallet.add_balance(&amount);
+            let sender_wallet = sender_wallet.add_balance(&amount, &history_hash);
             wallets.put(transfer.from(), sender_wallet);
         }
-        // Update sender history.
-        let event = Event::rollback(transfer_hash);
-        self.history_index_mut(transfer.from()).push(event);
     }
 
     /// Rolls back unaccepted transfers that expire at the current height.
