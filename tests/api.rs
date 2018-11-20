@@ -20,14 +20,13 @@ fn create_testkit() -> TestKit {
 }
 
 fn wallet(testkit: &TestKit, key: PublicKey, start_history_at: u64) -> CheckedWalletProof {
-    let trust_anchor = TrustAnchor {
-        validators: testkit
+    let trust_anchor = TrustAnchor::new(
+        testkit
             .network()
             .validators()
             .iter()
-            .map(|node| node.public_keys().consensus_key)
-            .collect(),
-    };
+            .map(|node| node.public_keys().consensus_key),
+    );
 
     let query = WalletQuery {
         key,
@@ -84,7 +83,7 @@ fn wallet_api() {
     assert!(response.history.is_empty());
     assert_eq!(
         HashSet::from_iter(response.unaccepted_transfers.iter().map(CryptoHash::hash)),
-        HashSet::<_>::from_iter(vec![transfer_from_bob.hash(), transfer_from_carol.hash(),]),
+        HashSet::<_>::from_iter(vec![transfer_from_bob.hash(), transfer_from_carol.hash()]),
     );
 
     // Accept one of transfers.

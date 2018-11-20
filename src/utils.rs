@@ -22,6 +22,15 @@ pub enum VerifyError {
 }
 
 impl TrustAnchor {
+    pub fn new<I>(consensus_keys: I) -> Self
+    where
+        I: IntoIterator<Item = PublicKey>,
+    {
+        TrustAnchor {
+            validators: consensus_keys.into_iter().collect(),
+        }
+    }
+
     pub fn verify_block_proof(&self, block_proof: &BlockProof) -> Result<(), VerifyError> {
         let validators: Result<Vec<_>, _> = block_proof
             .precommits

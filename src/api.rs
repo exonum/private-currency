@@ -4,7 +4,6 @@ use exonum::{
     api::{self, ServiceApiState},
     blockchain::{Block, BlockProof, Blockchain, Schema as CoreSchema, Transaction},
     crypto::{CryptoHash, Hash, PublicKey},
-    helpers::Height,
     storage::{
         proof_list_index::ListProofError,
         proof_map_index::{MapProofError, ProofMapKey},
@@ -379,18 +378,6 @@ impl WalletContentsProof {
 
         Ok((self.history.clone(), self.unaccepted_transfers.clone()))
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WalletResponse {
-    pub wallet: Wallet,
-    pub history: Vec<FullEvent>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnacceptedTransfers {
-    pub height: Height,
-    pub transfers: Vec<Transfer>,
 }
 
 impl Api {
