@@ -24,12 +24,12 @@ use exonum::{
     storage::MemoryDB,
 };
 use private_currency::{
-    api::{FullEvent, UnacceptedTransfers, WalletQuery, WalletResponse},
-    transactions::{Accept, CreateWallet, SecretState, Transfer},
-    Service as CurrencyService,
+    api::{CheckedWalletProof, FullEvent, TrustAnchor, WalletProof, WalletQuery},
+    transactions::{Accept, CreateWallet, Transfer},
+    SecretState, Service as CurrencyService,
 };
 use rand::{seq::sample_iter, thread_rng, Rng};
-use reqwest::{Client as HttpClient, StatusCode};
+use reqwest::Client as HttpClient;
 
 use std::{
     cmp,
@@ -42,12 +42,17 @@ use std::{
 #[derive(Debug, Clone)]
 struct ClientEnv {
     keys: Arc<RwLock<HashSet<PublicKey>>>,
+    trust_anchor: TrustAnchor,
 }
 
 impl ClientEnv {
-    fn new() -> Self {
+    fn new<I>(consensus_keys: I) -> Self
+    where
+        I: IntoIterator<Item = PublicKey>,
+    {
         ClientEnv {
             keys: Arc::new(RwLock::new(HashSet::new())),
+            trust_anchor: TrustAnchor::new(consensus_keys),
         }
     }
 
@@ -83,8 +88,6 @@ struct Client {
 impl Client {
     const WALLET_URL: &'static str =
         "http://127.0.0.1:8080/api/services/private_currency/v1/wallet";
-    const PENDING_TRANSFERS_URL: &'static str =
-        "http://127.0.0.1:8080/api/services/private_currency/v1/unaccepted";
     const TRANSACTION_URL: &'static str =
         "http://127.0.0.1:8080/api/services/private_currency/v1/transaction";
 
@@ -116,10 +119,10 @@ impl Client {
         error!("{} {}", self.tag(), error);
     }
 
-    fn poll_history(&mut self) {
+    fn poll_history(&mut self) -> Vec<Transfer> {
         let query = WalletQuery {
             key: *self.state.public_key(),
-            start_history_at: Some(self.events.len() as u32),
+            start_history_at: self.events.len() as u64,
         };
         let mut response = self
             .http
@@ -127,11 +130,20 @@ impl Client {
             .query(&query)
             .send()
             .expect("query wallet status");
-        if response.status() == StatusCode::NOT_FOUND {
-            self.log_info("wallet not found");
-        } else if response.status().is_success() {
-            let WalletResponse { wallet, history } =
-                response.json().expect("cannot parse response");
+
+        if response.status().is_success() {
+            let wallet_proof: WalletProof = response.json().expect("cannot parse response");
+            let CheckedWalletProof {
+                wallet,
+                history,
+                unaccepted_transfers,
+                block,
+            } = wallet_proof
+                .check(&self.client_env.trust_anchor, &query)
+                .unwrap();
+            let wallet = wallet.expect("wallet not found");
+            self.blockchain_height = block.height();
+
             for event in history {
                 let old_balance = self.state.balance();
 
@@ -158,50 +170,34 @@ impl Client {
                 self.events.push(event);
             }
 
-            assert!(self.state.corresponds_to(&wallet));
+            assert!(self.state.corresponds_to(&wallet.info()));
+            unaccepted_transfers
         } else {
             self.log_error(&format!("unexpected response: {:?}", response));
+            vec![]
         }
     }
 
-    fn poll_unaccepted_transfers(&mut self) {
-        let query = WalletQuery {
-            key: *self.state.public_key(),
-            start_history_at: Some(self.blockchain_height.next().0 as u32),
-        };
-
-        let mut response = self
-            .http
-            .get(Self::PENDING_TRANSFERS_URL)
-            .query(&query)
-            .send()
-            .expect("query wallet status");
-        if response.status() == StatusCode::NOT_FOUND {
-            self.log_info("pending not found");
-        } else if response.status().is_success() {
-            let UnacceptedTransfers { height, transfers } =
-                response.json().expect("cannot parse response");
-            self.blockchain_height = height;
-            let accepts = transfers.iter().flat_map(|transfer| {
-                if let Some(verified) = self.state.verify_transfer(transfer) {
-                    self.log_info(&format!(
-                        "received transfer: {} (txhash = {:?})",
-                        verified.value(),
-                        transfer.hash()
-                    ));
-                    Some(verified.accept)
-                } else {
-                    self.log_error(&format!(
-                        "received incorrect transfer (txhash = {:?})",
-                        transfer.hash()
-                    ));
-                    None
-                }
-            });
-
-            for accept in accepts {
-                self.send_accept(&accept);
+    fn accept_transfers(&self, transfers: &[Transfer]) {
+        let accepts = transfers.iter().flat_map(|transfer| {
+            if let Some(verified) = self.state.verify_transfer(transfer) {
+                self.log_info(&format!(
+                    "received transfer: {} (txhash = {:?})",
+                    verified.value(),
+                    transfer.hash()
+                ));
+                Some(verified.accept)
+            } else {
+                self.log_error(&format!(
+                    "received incorrect transfer (txhash = {:?})",
+                    transfer.hash()
+                ));
+                None
             }
+        });
+
+        for accept in accepts {
+            self.send_accept(&accept);
         }
     }
 
@@ -266,7 +262,7 @@ impl Client {
 
         loop {
             // Update our state.
-            self.poll_history();
+            let unaccepted_transfers = self.poll_history();
 
             // Create a transfer to a random wallet.
             if let Some(peer) = self.client_env.random_peer(self.state.public_key()) {
@@ -279,7 +275,7 @@ impl Client {
                 sleep();
             }
 
-            self.poll_unaccepted_transfers();
+            self.accept_transfers(&unaccepted_transfers);
             sleep();
         }
     }
@@ -323,13 +319,16 @@ fn node_config() -> NodeConfig {
 fn main() {
     exonum::helpers::init_logger().unwrap();
 
+    let node_cfg = node_config();
+    let consensus_keys = vec![node_cfg.consensus_public_key];
+
     // Start node thread.
     let handle = thread::spawn(|| {
         println!("Creating in-memory database...");
         let node = Node::new(
             MemoryDB::new(),
             vec![Box::new(CurrencyService)],
-            node_config(),
+            node_cfg,
             None,
         );
         println!("Starting a single node...");
@@ -339,7 +338,7 @@ fn main() {
 
     thread::sleep(Duration::from_millis(2_000));
     println!("Starting clients");
-    let client_env = ClientEnv::new();
+    let client_env = ClientEnv::new(consensus_keys);
     let client_handles: Vec<_> = (0..5)
         .map(|_| {
             let env = client_env.clone();
