@@ -267,11 +267,7 @@ impl<'a> Schema<&'a mut Fork> {
         let transfer_ids = self.rollback_transfers(height);
 
         for hash in &transfer_ids {
-            let transfer = CoreSchema::new(&self.inner)
-                .transactions()
-                .get(hash)
-                .expect("transfer");
-            let transfer = Transfer::from_raw(transfer).expect("parse transfer");
+            let transfer = maybe_transfer(&self.inner, hash).expect("Transfer");
             self.rollback_single(&transfer, hash);
             self.rollback_index_mut(height).remove(hash);
         }

@@ -39,6 +39,8 @@ pub const SERVICE_ID: u16 = 2_000;
 pub const INITIAL_BALANCE: u64 = 1_000_000;
 /// Acceptable bounds on the `Transfer::rollback_delay()` parameter.
 pub const ROLLBACK_DELAY_BOUNDS: Range<u32> = 5..1_000;
+/// Minimum acceptable transfer amount.
+pub const MIN_TRANSFER_AMOUNT: u64 = 1;
 
 pub struct Service;
 

@@ -74,10 +74,30 @@ impl ops::Add for Commitment {
     }
 }
 
+impl<'a, 'b> ops::Add<&'b Commitment> for &'a Commitment {
+    type Output = Commitment;
+
+    fn add(self, rhs: &'b Commitment) -> Commitment {
+        Commitment {
+            inner: self.inner + rhs.inner,
+        }
+    }
+}
+
 impl ops::Sub for Commitment {
     type Output = Commitment;
 
     fn sub(self, rhs: Self) -> Commitment {
+        Commitment {
+            inner: self.inner - rhs.inner,
+        }
+    }
+}
+
+impl<'a, 'b> ops::Sub<&'b Commitment> for &'a Commitment {
+    type Output = Commitment;
+
+    fn sub(self, rhs: &'b Commitment) -> Commitment {
         Commitment {
             inner: self.inner - rhs.inner,
         }
@@ -155,6 +175,20 @@ impl ops::Sub for Opening {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
+        Opening {
+            value: self
+                .value
+                .checked_sub(rhs.value)
+                .expect("integer underflow"),
+            blinding: self.blinding - rhs.blinding,
+        }
+    }
+}
+
+impl<'a, 'b> ops::Sub<&'b Opening> for &'a Opening {
+    type Output = Opening;
+
+    fn sub(self, rhs: &'b Opening) -> Opening {
         Opening {
             value: self
                 .value

@@ -54,7 +54,7 @@ the transfer is automatically refunded to the sender.
 
 ## TODO list
 
-- [ ] Check `a > 0` instead of `a >= 0` in transfers
+- [x] Check `a > 0` instead of `a >= 0` in transfers
 - [ ] Allow to reference a past commitment to sender's balance (but not before the latest outgoing transfer)
   in order to boost concurrency
 - [ ] Merkelize storage data

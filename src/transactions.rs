@@ -7,12 +7,18 @@ use exonum::{
 
 use std::fmt;
 
-use super::{INITIAL_BALANCE, ROLLBACK_DELAY_BOUNDS, SERVICE_ID};
+use super::{INITIAL_BALANCE, MIN_TRANSFER_AMOUNT, ROLLBACK_DELAY_BOUNDS, SERVICE_ID};
 use crypto::{
     enc,
     proofs::{Commitment, Opening, SimpleRangeProof},
 };
 use storage::{maybe_transfer, Schema, Wallet};
+
+lazy_static! {
+    static ref MIN_TRANSFER_OPENING: Opening = Opening::with_no_blinding(MIN_TRANSFER_AMOUNT);
+    static ref MIN_TRANSFER_COMMITMENT: Commitment =
+        Commitment::with_no_blinding(MIN_TRANSFER_AMOUNT);
+}
 
 encoding_struct! {
     struct EncryptedData {
@@ -283,11 +289,12 @@ impl Transfer {
     ) -> Option<Self> {
         assert!(ROLLBACK_DELAY_BOUNDS.start <= rollback_delay);
         assert!(rollback_delay < ROLLBACK_DELAY_BOUNDS.end);
+        assert!(amount >= MIN_TRANSFER_AMOUNT);
         assert!(sender_secrets.balance_opening.value >= amount);
 
         let (committed_amount, opening) = Commitment::new(amount);
-        let amount_proof = SimpleRangeProof::prove(&opening)?;
-        let remaining_balance = sender_secrets.balance_opening.clone() - opening.clone();
+        let amount_proof = SimpleRangeProof::prove(&(&opening - &MIN_TRANSFER_OPENING))?;
+        let remaining_balance = &sender_secrets.balance_opening - &opening;
         let sufficient_balance_proof = SimpleRangeProof::prove(&remaining_balance)?;
         let encrypted_data = EncryptedData::seal(
             &opening.to_bytes(),
@@ -309,7 +316,8 @@ impl Transfer {
 
     /// Performs stateless verification of the transfer operation.
     fn verify(&self) -> bool {
-        self.amount_proof().verify(&self.amount())
+        self.amount_proof()
+            .verify(&(&self.amount() - &MIN_TRANSFER_COMMITMENT))
     }
 
     fn verify_stateful(&self, sender: &Wallet) -> bool {
@@ -386,55 +394,47 @@ impl From<Error> for ExecutionError {
 mod tests {
     use super::*;
 
-    fn gen_wallet(balance: u64) -> (Wallet, SecretState) {
+    fn gen_wallet(balance: u64) -> SecretState {
         let mut secrets = SecretState::new();
         secrets.balance_opening = Opening::with_no_blinding(balance);
-        (secrets.to_public(), secrets)
+        secrets
     }
 
     #[test]
     fn can_open_encrypted_data() {
         const MSG: &[u8] = b"hello";
 
-        let (
-            sender,
-            SecretState {
-                encryption_sk: sender_sk,
-                ..
-            },
-        ) = gen_wallet(100);
-        let (
-            receiver,
-            SecretState {
-                encryption_sk: receiver_sk,
-                ..
-            },
-        ) = gen_wallet(100);
+        let sender = gen_wallet(100);
+        let sender_pk = sender.to_public().encryption_key();
+        let receiver = gen_wallet(100);
+        let receiver_pk = receiver.to_public().encryption_key();
 
-        let encrypted_data = EncryptedData::seal(MSG, &receiver.encryption_key(), &sender_sk);
+        let encrypted_data = EncryptedData::seal(MSG, &receiver_pk, &sender.encryption_sk);
         assert_eq!(
-            encrypted_data.open(&sender.encryption_key(), &receiver_sk),
+            encrypted_data.open(&sender_pk, &receiver.encryption_sk),
             Some(MSG.to_vec())
         );
         assert_eq!(
-            encrypted_data.open_as_sender(&receiver.encryption_key(), &sender_sk),
+            encrypted_data.open_as_sender(&receiver_pk, &sender.encryption_sk),
             Some(MSG.to_vec())
         );
     }
 
     #[test]
     fn transfer_verifies() {
-        let (sender, sender_secrets) = gen_wallet(100);
-        let (receiver, receiver_secrets) = gen_wallet(50);
+        let sender_sec = gen_wallet(100);
+        let sender = sender_sec.to_public();
+        let receiver_sec = gen_wallet(50);
+        let receiver = receiver_sec.to_public();
 
         let transfer =
-            Transfer::create(42, &receiver.public_key(), 10, &sender_secrets).expect("transfer");
+            Transfer::create(42, &receiver.public_key(), 10, &sender_sec).expect("transfer");
         assert!(transfer.verify());
         assert!(transfer.verify_stateful(&sender));
 
         let opening = transfer
             .encrypted_data()
-            .open(&sender.encryption_key(), &receiver_secrets.encryption_sk)
+            .open(&sender.encryption_key(), &receiver_sec.encryption_sk)
             .expect("decrypt");
         let opening = Opening::from_slice(&opening).expect("opening");
         assert_eq!(opening.value, 42);
@@ -442,10 +442,42 @@ mod tests {
 
         let opening = transfer
             .encrypted_data()
-            .open_as_sender(&receiver.encryption_key(), &sender_secrets.encryption_sk)
+            .open_as_sender(&receiver.encryption_key(), &sender_sec.encryption_sk)
             .expect("decrypt");
         let opening = Opening::from_slice(&opening).expect("opening");
         assert_eq!(opening.value, 42);
         assert!(transfer.amount().verify(&opening));
+    }
+
+    #[test]
+    fn transfer_with_small_amount_does_not_verify() {
+        let sender_sec = gen_wallet(100);
+        let (receiver, _) = gen_keypair();
+        let (committed_amount, opening) = Commitment::new(0);
+
+        // This intentionally deviates from the proper procedure - we don't subtract
+        // `MIN_AMOUNT_OPENING` from the `opening`.
+        let amount_proof = SimpleRangeProof::prove(&opening).expect("prove amount");
+
+        let remaining_balance = &sender_sec.balance_opening - &opening;
+        let sufficient_balance_proof =
+            SimpleRangeProof::prove(&remaining_balance).expect("prove balance");
+        let encrypted_data = EncryptedData::seal(
+            &opening.to_bytes(),
+            &enc::pk_from_ed25519(receiver),
+            &sender_sec.encryption_sk,
+        );
+
+        let transfer = Transfer::new(
+            &sender_sec.verifying_key,
+            &receiver,
+            10,
+            committed_amount,
+            amount_proof,
+            sufficient_balance_proof,
+            encrypted_data,
+            &sender_sec.signing_key,
+        );
+        assert!(!transfer.verify());
     }
 }
