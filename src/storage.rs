@@ -166,7 +166,9 @@ where
     T: AsRef<dyn Snapshot>,
 {
     let core_schema = CoreSchema::new(view);
-    // FIXME: can `core_schema.transactions()` return uncommitted transactions?
+    if !core_schema.transactions_locations().contains(id) {
+        return None;
+    }
     let transaction = core_schema.transactions().get(id)?;
     CreateWallet::from_raw(transaction).ok()
 }
@@ -182,6 +184,9 @@ where
     T: AsRef<dyn Snapshot>,
 {
     let core_schema = CoreSchema::new(view);
+    if !core_schema.transactions_locations().contains(id) {
+        return None;
+    }
     let transaction = core_schema.transactions().get(id)?;
     Transfer::from_raw(transaction).ok()
 }
