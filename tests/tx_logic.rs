@@ -12,7 +12,7 @@ use exonum::{
 };
 use exonum_testkit::{TestKit, TestKitBuilder};
 use private_currency::{
-    crypto::proofs::Opening,
+    crypto::Opening,
     storage::{Event, Schema},
     transactions::{Accept, Error},
     SecretState, Service as Currency, INITIAL_BALANCE,

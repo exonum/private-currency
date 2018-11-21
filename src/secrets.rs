@@ -1,27 +1,32 @@
+//! Utilities for managing the secret state of a wallet.
+
 use exonum::crypto::{gen_keypair, CryptoHash, PublicKey, SecretKey};
 
 use std::fmt;
 
 use super::{INITIAL_BALANCE, MIN_TRANSFER_AMOUNT, ROLLBACK_DELAY_BOUNDS};
-use crypto::{
-    enc,
-    proofs::{Commitment, Opening, SimpleRangeProof},
-};
+use crypto::{enc, Commitment, Opening, SimpleRangeProof};
 use storage::WalletInfo;
 use transactions::{Accept, CreateWallet, Transfer};
 
 lazy_static! {
+    /// Opening to a minimum transfer amount.
     static ref MIN_TRANSFER_OPENING: Opening = Opening::with_no_blinding(MIN_TRANSFER_AMOUNT);
 }
 
 encoding_struct! {
+    /// Encrypted information embedded into transfers.
     struct EncryptedData {
+        /// Cryptographic nonce for the `box` routine from `libsodium`.
         nonce: &[u8],
+        /// Data encrypted with the `box` routine from `libsodium`.
         encrypted_data: &[u8],
     }
 }
 
 impl EncryptedData {
+    /// Encrypts data based on sender's private encryption key
+    /// and the receiver's public one.
     fn seal(message: &[u8], receiver: &enc::PublicKey, sender_sk: &enc::SecretKey) -> Self {
         let nonce = enc::gen_nonce();
         let encrypted_data = enc::seal(message, &nonce, receiver, sender_sk);
@@ -29,11 +34,18 @@ impl EncryptedData {
         EncryptedData::new(nonce.as_ref(), &encrypted_data)
     }
 
+    /// Decrypts data based on sender's public encryption key
+    /// and the receiver's secret one.
     fn open(&self, sender: &enc::PublicKey, receiver_sk: &enc::SecretKey) -> Option<Vec<u8>> {
         let nonce = enc::Nonce::from_slice(self.nonce())?;
         enc::open(self.encrypted_data(), &nonce, sender, receiver_sk).ok()
     }
 
+    /// Decrypts data based on sender's private encryption key
+    /// and the receiver's public one.
+    // This is possible as `box` uses Diffie-Hellman key exchange to derive a shared secret
+    // for encryption with a symmetric cipher. It's enough to know one secret key to restore
+    // this shared secret.
     fn open_as_sender(
         &self,
         receiver: &enc::PublicKey,
@@ -46,10 +58,30 @@ impl EncryptedData {
 }
 
 /// Secret state of an account owner.
+///
+/// # Usage
+///
+/// `SecretState` can be used to create transactions originating from the wallet.
+/// The state also should be updated based on the wallet history, which can be retrieved
+/// with [HTTP API]. Each transaction in the history should be applied to the state
+/// exactly once.
+///
+/// [HTTP API]: ::api::Api::wallet()
 pub struct SecretState {
     encryption_sk: enc::SecretKey,
     signing_key: SecretKey,
+
+    // We save verifying key for efficiency reasons.
     verifying_key: PublicKey,
+
+    // This `Opening` is why `SecretState` is needed: we need to be able to open
+    // the commitment to the wallet balance, which is stored in the blockchain,
+    // in order to produce `Transfer`s and possibly for other tasks (such as proving
+    // bounds on the balance to off-chain parties). If the opening is lost,
+    // the wallet owner can no longer perform these tasks. Fortunately, with the given
+    // design, it's always possible (and quite easy) to restore the opening from scratch
+    // provided that the owner knows the secret key to the wallet; indeed, it's enough
+    // to download wallet history anew and replay it.
     balance_opening: Opening,
 }
 
@@ -62,13 +94,18 @@ impl fmt::Debug for SecretState {
     }
 }
 
+/// Information about an incoming transfer successfully verified w.r.t. the `SecretState`
+/// of the receiver's wallet.
 #[derive(Debug)]
 pub struct VerifiedTransfer {
+    /// Opening for the transferred amount.
     pub opening: Opening,
+    /// `Accept` transaction for the transfer.
     pub accept: Accept,
 }
 
 impl VerifiedTransfer {
+    /// Gets the transferred amount in plaintext.
     pub fn value(&self) -> u64 {
         self.opening.value
     }
@@ -93,18 +130,33 @@ impl SecretState {
         }
     }
 
+    /// Gets the public key of the wallet (aka verifying Ed25519 for digital signatures).
     pub fn public_key(&self) -> &PublicKey {
         &self.verifying_key
     }
 
+    /// Gets the current wallet balance.
     pub fn balance(&self) -> u64 {
         self.balance_opening.value
     }
 
+    /// Produces a `CreateWallet` transaction for this wallet.
     pub fn create_wallet(&self) -> CreateWallet {
         CreateWallet::new(&self.verifying_key, &self.signing_key)
     }
 
+    /// Produces a `Transfer` transaction from this wallet to the specified receiver.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the transfer violates constraints imposed by the transaction
+    /// logic of the service:
+    ///
+    /// - `amount` is lower than [`MIN_TRANSFER_AMOUNT`]
+    /// - `receiver` is same as the sender
+    /// - `rollback_delay` is not within acceptable range
+    ///
+    /// [`MIN_TRANSFER_AMOUNT`]: ::MIN_TRANSFER_AMOUNT
     pub fn create_transfer(
         &self,
         amount: u64,
@@ -179,6 +231,12 @@ impl SecretState {
         }
     }
 
+    /// Rolls back a previously committed transfer.
+    ///
+    /// # Safety
+    ///
+    /// The transfer is assumed to be originating from the blockchain and rolled back
+    /// according to the wallet history.
     pub fn rollback(&mut self, transfer: &Transfer) {
         if self.verifying_key == *transfer.from() {
             let receiver = enc::pk_from_ed25519(*transfer.to());

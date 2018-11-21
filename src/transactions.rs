@@ -1,3 +1,5 @@
+//! Transaction logic.
+
 use exonum::{
     blockchain::{ExecutionError, Transaction},
     crypto::{Hash, PublicKey},
@@ -6,7 +8,7 @@ use exonum::{
 };
 
 use super::{MIN_TRANSFER_AMOUNT, ROLLBACK_DELAY_BOUNDS, SERVICE_ID};
-use crypto::proofs::{Commitment, SimpleRangeProof};
+use crypto::{Commitment, SimpleRangeProof};
 use secrets::EncryptedData;
 use storage::{maybe_transfer, Schema, WalletInfo};
 
@@ -19,7 +21,7 @@ transactions! {
     pub CryptoTransactions {
         const SERVICE_ID = SERVICE_ID;
 
-        /// Create a new wallet.
+        /// Transaction for creating a new wallet.
         ///
         /// # Notes
         ///
@@ -31,9 +33,7 @@ transactions! {
             key: &PublicKey,
         }
 
-        /// Transfer funds from this wallet to the other wallet.
-        ///
-        /// # Notes
+        /// Transfer from one wallet to the other wallet.
         struct Transfer {
             /// Ed25519 public key of the sender. The transaction must be signed with the
             /// corresponding secret key.
@@ -59,7 +59,7 @@ transactions! {
             encrypted_data: EncryptedData,
         }
 
-        /// Accept a transfer.
+        /// Transaction to accept an incoming transfer.
         struct Accept {
             /// Public key of the receiver of the transfer.
             receiver: &PublicKey,
@@ -141,14 +141,48 @@ impl Transaction for Accept {
     }
 }
 
+/// Errors that can occur during transaction processing.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Fail)]
 #[repr(u8)]
 pub enum Error {
+    /// Wallet already exists.
+    ///
+    /// Can occur in [`CreateWallet`](self::CreateWallet).
+    #[fail(display = "wallet already exists")]
     WalletExists = 0,
-    InvalidEncryptionKey = 1,
-    UnregisteredSender = 3,
-    UnregisteredReceiver = 4,
-    IncorrectProof = 5,
-    UnknownTransfer = 6,
+
+    /// The sender of a transfer is not registered.
+    ///
+    /// Can occur in [`Transfer`](self::Transfer).
+    #[fail(display = "the sender of a transfer is not registered")]
+    UnregisteredSender = 1,
+
+    /// The receiver of a transfer is not registered.
+    ///
+    /// Can occur in [`Transfer`](self::Transfer).
+    #[fail(display = "the receiver of a transfer is not registered")]
+    UnregisteredReceiver = 2,
+
+    /// The range proof for the sender's sufficient account balance is incorrect.
+    ///
+    /// Can occur in [`Transfer`](self::Transfer).
+    #[fail(display = "the range proof for the sender's sufficient account balance is incorrect")]
+    IncorrectProof = 3,
+
+    /// An `Accept` transaction references an unknown transfer.
+    ///
+    /// Can occur in [`Accept`](self::Accept).
+    #[fail(display = "an `Accept` transaction references an unknown transfer")]
+    UnknownTransfer = 4,
+
+    /// The author of an `Accept` transaction differs from the receiver of the referenced
+    /// transfer.
+    ///
+    /// Can occur in [`Accept`](self::Accept).
+    #[fail(
+        display = "the author of an `Accept` transaction differs from the receiver \
+                   of the referenced transfer"
+    )]
     UnauthorizedAccept = 7,
 }
 

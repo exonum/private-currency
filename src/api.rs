@@ -23,7 +23,7 @@ pub use utils::{TrustAnchor, VerifyError as BlockVerifyError};
 #[derive(Debug)]
 pub enum Api {}
 
-/// Query for `wallet` and `unaccepted_transfers` endpoints.
+/// Query for the `wallet` endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletQuery {
     /// Public key of the account to check.
@@ -36,12 +36,25 @@ pub struct WalletQuery {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename = "kebab-case")]
 pub enum FullEvent {
+    /// Event corresponding to wallet creation. There is only one such event in wallet history -
+    /// the very first one.
     CreateWallet(CreateWallet),
+
+    /// Transfer to or from the wallet.
+    ///
+    /// Note that outgoing transfers are recorded in the sender's history immediately after
+    /// the commitment. The incoming transfers, on the other hand, need to be [`Accept`]ed.
+    ///
+    /// [`Accept`]: ::transactions::Accept
     Transfer(Transfer),
+
+    /// Rolled-back transfer returning the funds to the sender.
     Rollback(Transfer),
 }
 
 impl FullEvent {
+    /// Converts `Event` into its full form by loading the transaction data
+    /// from the provided snapshot.
     fn from<T: AsRef<dyn Snapshot>>(event: Event, snapshot: T) -> Self {
         let id = event.transaction_hash();
         match event.tag() {
@@ -66,6 +79,7 @@ impl FullEvent {
         }
     }
 
+    /// Does this event correspond to a given storage-form event?
     fn corresponds_to(&self, event: &Event) -> bool {
         if self.tag() as u8 != event.tag() {
             return false;
@@ -80,6 +94,22 @@ impl FullEvent {
     }
 }
 
+/// Cryptographically authenticated proof of the state for a single wallet.
+///
+/// The proof contains several parts:
+///
+/// - Block header together with authorizing [`Precommit`]s
+/// - Proof connecting the block header with the wallets table in the storage,
+///   and then with a particular wallet.
+/// - Information about new events in the wallet history and unaccepted incoming transfers,
+///   if any.
+///
+/// # Proof of absence
+///
+/// The proof can also be used to prove the absence of a wallet. In this case, the last part
+/// of the proof (history and unaccepted transfers) is empty.
+///
+/// [`Precommit`]: ::exonum::blockchain::Precommit
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WalletProof {
     block_proof: BlockProof,
@@ -89,14 +119,29 @@ pub struct WalletProof {
     wallet_contents: Option<WalletContentsProof>,
 }
 
+/// Information about wallet state useful for a client, obtained after checking a `WalletProof`.
 #[derive(Debug)]
 pub struct CheckedWalletProof {
+    /// Block information.
     pub block: Block,
+
+    /// General information about the wallet.
     pub wallet: Option<Wallet>,
+
+    /// New events concerning the wallet. The event with index `0` corresponds to an event
+    /// at index `query.start_history_at` in the wallet history, and so on.
+    ///
+    /// If [`wallet`](#field.wallet) is `None`, the `history` is empty.
     pub history: Vec<FullEvent>,
+
+    /// Unaccepted incoming transfers for the wallet.
+    ///
+    /// If [`wallet`](#field.wallet) is `None`, the `unaccepted_transfers` vector is empty.
     pub unaccepted_transfers: Vec<Transfer>,
 }
 
+/// Part of a `WalletProof` related to auxiliary tables (wallet history and unaccepted transfers).
+// This struct is inlined into the parent, so it's not public.
 #[derive(Debug, Serialize, Deserialize)]
 struct WalletContentsProof {
     history: Vec<FullEvent>,
@@ -105,53 +150,79 @@ struct WalletContentsProof {
     unaccepted_transfers_proof: MapProof<Hash, ()>,
 }
 
+/// Error during `WalletProof` verification.
 #[derive(Debug, Fail)]
 pub enum VerifyError {
+    /// Error verifying block header.
     #[fail(display = "block verification failed: {}", _0)]
     Block(#[fail(cause)] BlockVerifyError),
 
+    /// Error verifying one of `MapProof`s included into the wallet proof.
     #[fail(
         display = "verifying `MapProof` for {} failed: {}",
         proof_description,
         error
     )]
     MapProof {
+        /// Cause of the verification failure.
         #[fail(cause)]
         error: MapProofError,
+        /// Description of the proof where an error has occurred.
         proof_description: ProofDescription,
     },
 
+    /// Error verifying one of `ListProof`s included into the wallet proof.
     #[fail(
         display = "verifying `ListProof` for {} failed: {:?}",
         proof_description,
         error
     )]
     ListProof {
+        /// Cause of the verification failure.
         error: ListProofError,
+        /// Description of the proof where an error has occurred.
         proof_description: ProofDescription,
     },
 
+    /// A `ListProof` or `MapProof` is disconnected from its parent. In other words, the root hash
+    /// of the index restored from the proof does not match one obtained from other proof data.
     #[fail(
         display = "Merkle proof for {} is disconnected from parent",
         _0
     )]
     ProofDisconnect(ProofDescription),
 
+    /// A `ListProof` or `MapProof` does not prove presence or absence of a key,
+    /// which it is expected to prove.
     #[fail(display = "Merkle proof for {} misses expected key", _0)]
     MissingKey(ProofDescription),
 
+    /// A Merkle proof proves existence of keys that do not match the plain data included into
+    /// to the proof.
+    ///
+    /// For example, this error could occur if the proof mentions 3 new events in wallet history,
+    /// but the corresponding `ListProof` includes only 2 of these events.
     #[fail(display = "Merkle proof and entries for {} do not match", _0)]
     KeyMismatch(ProofDescription),
 
+    /// The proof shows existence of the requested wallet, but the events and unaccepted transfers
+    /// are missing from the proof.
     #[fail(display = "missing wallet contents")]
     NoContents,
 }
 
-#[derive(Debug, Clone, Copy)]
+/// Description of a part of a `WalletProof`.
+///
+/// Used in [`VerifyError`](VerifyError).
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ProofDescription {
+    /// `MapProof` from the `state_hash` mentioned in the block header, to the wallets table.
     WalletsTable,
+    /// `MapProof` from the wallets table to a specific wallet.
     Wallet,
-    Events,
+    /// `ListProof` for wallet history.
+    History,
+    /// `MapProof` for unaccepted transfers.
     UnacceptedTransfers,
 }
 
@@ -162,7 +233,7 @@ impl fmt::Display for ProofDescription {
         match self {
             WalletsTable => f.write_str("wallets table"),
             Wallet => f.write_str("wallet"),
-            Events => f.write_str("events"),
+            History => f.write_str("events"),
             UnacceptedTransfers => f.write_str("unaccepted transfers"),
         }
     }
@@ -175,6 +246,7 @@ impl From<BlockVerifyError> for VerifyError {
 }
 
 impl WalletProof {
+    /// Creates a new proof based on a given storage snapshot.
     fn new<T: AsRef<dyn Snapshot>>(snapshot: T, query: &WalletQuery) -> Self {
         let core_schema = CoreSchema::new(&snapshot);
         let block_proof = core_schema
@@ -197,6 +269,13 @@ impl WalletProof {
         }
     }
 
+    /// Checks if a `MapProof` contains a specified key.
+    ///
+    /// # Return value
+    ///
+    /// - If the proof is correct and contains the key, the method returns `Ok(Some(_))`.
+    /// - If the proof (correctly) proves absence of the key, the method returns `Ok(None)`.
+    /// - Otherwise, we return an `Err(_)`.
     fn check_map_proof_with_single_key<K, V>(
         proof: MapProof<K, V>,
         expected_hash: Hash,
@@ -222,6 +301,8 @@ impl WalletProof {
         Ok(value.cloned())
     }
 
+    /// Checks the proof, returning information contained in the proof that might be
+    /// interesting to client applications.
     pub fn check(
         &self,
         trust_anchor: &TrustAnchor,
@@ -274,6 +355,7 @@ impl WalletProof {
 }
 
 impl WalletContentsProof {
+    /// Creates a new proof based on a given storage snapshot.
     fn new<T: AsRef<dyn Snapshot>>(snapshot: T, query: &WalletQuery) -> Self {
         let schema = Schema::new(&snapshot);
 
@@ -313,13 +395,18 @@ impl WalletContentsProof {
         }
     }
 
+    /// Checks the proof.
+    ///
+    /// # Return value
+    ///
+    /// Vectors with new events in wallet history and unaccepted incoming transfers.
     fn check(
         &self,
         wallet: &Wallet,
         query: &WalletQuery,
     ) -> Result<(Vec<FullEvent>, Vec<Transfer>), VerifyError> {
         // Verify wallet history.
-        let proof_description = ProofDescription::Events;
+        let proof_description = ProofDescription::History;
         let history_proof = self.history_proof.as_ref();
         let tx_hashes = if let Some(proof) = history_proof {
             proof
@@ -381,11 +468,15 @@ impl WalletContentsProof {
 }
 
 impl Api {
+    /// Returns information about a single wallet. The information is supported with
+    /// cryptographic proofs, allowing client applications to minimize trust in their server
+    /// peers.
     pub fn wallet(state: &ServiceApiState, query: WalletQuery) -> api::Result<WalletProof> {
         let snapshot = state.snapshot();
         Ok(WalletProof::new(snapshot, &query))
     }
 
+    /// Accepts transactions for processing.
     pub fn transaction(state: &ServiceApiState, tx: CryptoTransactions) -> api::Result<Hash> {
         use exonum::node::TransactionSend;
 

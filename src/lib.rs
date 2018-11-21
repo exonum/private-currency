@@ -1,3 +1,12 @@
+//! Privacy-focused Exonum service. The service hides the amounts being
+//! transferred among registered accounts (but not the identities transacting accounts).
+//!
+//! The service uses [Bulletproofs] to hide transfer amounts and account balances.
+//! See [README] for the general description.
+//!
+//! [Bulletproofs]: https://eprint.iacr.org/2017/1066.pdf
+//! [README]: https://github.com/exonum/private-currency/#readme
+
 #[macro_use]
 extern crate lazy_static;
 extern crate byteorder;
@@ -34,11 +43,13 @@ pub mod transactions;
 mod utils;
 
 pub use api::Api;
-pub use secrets::{SecretState, VerifiedTransfer};
+pub use secrets::{EncryptedData, SecretState, VerifiedTransfer};
 pub use storage::{Schema, Wallet};
 pub use transactions::CryptoTransactions as Transactions;
 
+/// Human-readable service name.
 pub const SERVICE_NAME: &str = "private_currency";
+/// Service identifier.
 pub const SERVICE_ID: u16 = 2_000;
 
 /// Initial amount of tokens for a new account.
@@ -48,6 +59,9 @@ pub const ROLLBACK_DELAY_BOUNDS: Range<u32> = 5..1_000;
 /// Minimum acceptable transfer amount.
 pub const MIN_TRANSFER_AMOUNT: u64 = 1;
 
+/// Privacy-preserving cryptocurrency service.
+///
+/// See crate documentation for more details.
 pub struct Service;
 
 impl bc::Service for Service {

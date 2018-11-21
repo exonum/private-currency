@@ -1,4 +1,4 @@
-//! Storage logic.
+//! Storage logic for the service.
 
 use exonum::{
     blockchain::Schema as CoreSchema,
@@ -10,7 +10,7 @@ use exonum::{
 
 use std::collections::{HashMap, HashSet};
 
-use crypto::{enc, proofs::Commitment};
+use crypto::{enc, Commitment};
 use transactions::{CreateWallet, Error, Transfer};
 
 const WALLETS: &str = "private_currency.wallets";
@@ -19,56 +19,88 @@ const UNACCEPTED_PAYMENTS: &str = "private_currency.unaccepted_payments";
 const ROLLBACK_BY_HEIGHT: &str = "private_currency.rollback_by_height";
 
 lazy_static! {
+    /// Commitment to the initial balance of a wallet.
+    ///
+    /// We don't use a blinding factor for the commitment since we assume
+    /// that the initial balance of a wallet is a public constant.
     static ref INITIAL_BALANCE: Commitment = Commitment::with_no_blinding(super::INITIAL_BALANCE);
 }
 
 encoding_struct! {
+    /// Wallet summary.
     struct Wallet {
+        /// Ed25519 public key associated with the wallet. Transactions originating from the wallet
+        /// need to be digitally signed with the paired secret key.
         public_key: &PublicKey,
+        /// Commitment to the current wallet balance.
         balance: Commitment,
+        /// Number of entries in the wallet history.
         history_len: u64,
+        /// Merkle root of the wallet history list.
         history_hash: &Hash,
+        /// Merkle root of the unaccepted incoming transfers.
         unaccepted_transfers_hash: &Hash,
     }
 }
 
 encoding_struct! {
+    /// Storage representation of an event concerning a wallet.
+    ///
+    /// # See also
+    ///
+    /// - [HTTP API representation](::api::FullEvent)
     #[derive(Eq, Hash)]
     struct Event {
+        /// Event tag.
+        ///
+        /// Always corresponds to one of constants in [`EventTag`](self::EventTag).
         tag: u8,
+        /// Hash of a transaction associated with the event.
         transaction_hash: &Hash,
     }
 }
 
 impl Event {
+    /// Creates a new transfer event.
     pub fn transfer(id: &Hash) -> Self {
         Event::new(EventTag::Transfer as u8, id)
     }
 
+    /// Creates a new wallet initialization event.
     pub fn create_wallet(id: &Hash) -> Self {
         Event::new(EventTag::CreateWallet as u8, id)
     }
 
+    /// Creates a new transfer rollback event.
     pub fn rollback(id: &Hash) -> Self {
         Event::new(EventTag::Rollback as u8, id)
     }
 }
 
+/// Tag used in `Event`s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub(crate) enum EventTag {
+    /// Wallet initialization.
     CreateWallet = 0,
+    /// Transfer to or from the wallet.
     Transfer = 1,
+    /// Transfer rollback.
     Rollback = 2,
 }
 
+/// Gist of information about the wallet, stripped of auxiliary data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WalletInfo {
+    /// Ed25519 public key associated with the wallet. Transactions originating from the wallet
+    /// need to be digitally signed with the paired secret key.
     pub public_key: PublicKey,
+    /// Commitment to the current wallet balance.
     pub balance: Commitment,
 }
 
 impl WalletInfo {
+    /// Computes the encryption key associated with the wallet.
     pub fn encryption_key(&self) -> enc::PublicKey {
         enc::pk_from_ed25519(self.public_key)
     }
@@ -79,6 +111,7 @@ impl Wallet {
         Wallet::new(key, INITIAL_BALANCE.clone(), 1, history_hash, &Hash::zero())
     }
 
+    /// Retrieves the wallet summary.
     pub fn info(&self) -> WalletInfo {
         WalletInfo {
             public_key: *self.public_key(),
@@ -86,6 +119,7 @@ impl Wallet {
         }
     }
 
+    /// Computes the encryption key associated with the wallet.
     pub fn encryption_key(&self) -> enc::PublicKey {
         enc::pk_from_ed25519(*self.public_key())
     }
@@ -121,15 +155,28 @@ impl Wallet {
     }
 }
 
+/// Loads a `CreateWallet` transaction with the specified hash from a storage snapshot.
+///
+/// # Return value
+///
+/// If a transaction with the specified hash does not exist in the blockchain or is not
+/// a `CreateWallet`, the function returns `None`.
 pub(crate) fn maybe_create_wallet<T>(view: T, id: &Hash) -> Option<CreateWallet>
 where
     T: AsRef<dyn Snapshot>,
 {
     let core_schema = CoreSchema::new(view);
+    // FIXME: can `core_schema.transactions()` return uncommitted transactions?
     let transaction = core_schema.transactions().get(id)?;
     CreateWallet::from_raw(transaction).ok()
 }
 
+/// Loads a `Transfer` transaction with the specified hash from a storage snapshot.
+///
+/// # Return value
+///
+/// If a transaction with the specified hash does not exist in the blockchain or is not
+/// a `Transfer`, the function returns `None`.
 pub(crate) fn maybe_transfer<T>(view: T, id: &Hash) -> Option<Transfer>
 where
     T: AsRef<dyn Snapshot>,
@@ -139,24 +186,36 @@ where
     Transfer::from_raw(transaction).ok()
 }
 
+/// Schema for the private currency service.
 #[derive(Debug)]
 pub struct Schema<T> {
     inner: T,
 }
 
 impl<T: AsRef<dyn Snapshot>> Schema<T> {
+    /// Creates a schema based on the storage view.
     pub fn new(view: T) -> Self {
         Schema { inner: view }
     }
 
+    /// Returns the state hash of the service.
+    ///
+    /// The state hash directly commits to a single table of the service - [`wallets`].
+    /// Other Merkelized tables (wallet histories and unaccepted transfers are connected
+    /// to the state via fields in [`Wallet`] records.
+    ///
+    /// [`wallets`]: Self::wallets()
+    /// [`Wallet`]: self::Wallet
     pub fn state_hash(&self) -> Vec<Hash> {
         vec![self.wallets().merkle_root()]
     }
 
+    /// Returns the mapping of public keys to wallets.
     pub fn wallets(&self) -> ProofMapIndex<&T, PublicKey, Wallet> {
         ProofMapIndex::new(WALLETS, &self.inner)
     }
 
+    /// Loads a wallet with the specified `public_key`.
     pub fn wallet(&self, public_key: &PublicKey) -> Option<Wallet> {
         self.wallets().get(public_key)
     }
@@ -168,6 +227,8 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
         ProofMapIndex::new_in_family(UNACCEPTED_PAYMENTS, key, &self.inner)
     }
 
+    /// Returns all unaccepted incoming transfers for the account associated
+    /// with the given public `key`.
     pub fn unaccepted_transfers(&self, key: &PublicKey) -> HashSet<Hash> {
         let index = self.unaccepted_transfers_index(key);
         let hashes = index.keys().collect();
@@ -178,6 +239,7 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
         ProofListIndex::new_in_family(HISTORY, key, &self.inner)
     }
 
+    /// Returns all history entries for the specified account.
     pub fn history(&self, key: &PublicKey) -> Vec<Event> {
         let index = self.history_index(key);
         let hashes = index.iter().collect();
@@ -189,6 +251,9 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
         KeySetIndex::new_in_family(ROLLBACK_BY_HEIGHT, &height, &self.inner)
     }
 
+    /// Returns hashes for all unaccepted transfers that should rolled back at
+    /// the specified blockchain height.
+    #[doc(hidden)]
     pub fn rollback_transfers(&self, height: Height) -> Vec<Hash> {
         let index = self.rollback_index(height);
         let hashes = index.iter().collect();
