@@ -10,6 +10,7 @@ use exonum::{
 
 use std::collections::{HashMap, HashSet};
 
+use super::CONFIG;
 use crypto::{enc, Commitment};
 use transactions::{CreateWallet, Error, Transfer};
 
@@ -23,7 +24,7 @@ lazy_static! {
     ///
     /// We don't use a blinding factor for the commitment since we assume
     /// that the initial balance of a wallet is a public constant.
-    static ref INITIAL_BALANCE: Commitment = Commitment::with_no_blinding(super::INITIAL_BALANCE);
+    static ref INITIAL_BALANCE: Commitment = Commitment::with_no_blinding(CONFIG.initial_balance);
 }
 
 encoding_struct! {

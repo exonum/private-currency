@@ -4,14 +4,14 @@ use exonum::crypto::{gen_keypair, CryptoHash, PublicKey, SecretKey};
 
 use std::fmt;
 
-use super::{INITIAL_BALANCE, MIN_TRANSFER_AMOUNT, ROLLBACK_DELAY_BOUNDS};
+use super::CONFIG;
 use crypto::{enc, Commitment, Opening, SimpleRangeProof};
 use storage::WalletInfo;
 use transactions::{Accept, CreateWallet, Transfer};
 
 lazy_static! {
     /// Opening to a minimum transfer amount.
-    static ref MIN_TRANSFER_OPENING: Opening = Opening::with_no_blinding(MIN_TRANSFER_AMOUNT);
+    static ref MIN_TRANSFER_OPENING: Opening = Opening::with_no_blinding(CONFIG.min_transfer_amount);
 }
 
 encoding_struct! {
@@ -174,7 +174,7 @@ impl SecretState {
     /// only be called once.
     pub fn initialize(&mut self) {
         debug_assert_eq!(self.balance_opening, Opening::with_no_blinding(0));
-        self.balance_opening = Opening::with_no_blinding(INITIAL_BALANCE);
+        self.balance_opening = Opening::with_no_blinding(CONFIG.initial_balance);
     }
 
     /// Verifies an incoming transfer.
@@ -273,10 +273,11 @@ impl Transfer {
         rollback_delay: u32,
         sender_secrets: &SecretState,
     ) -> Option<Self> {
-        assert!(ROLLBACK_DELAY_BOUNDS.start <= rollback_delay);
-        assert!(rollback_delay < ROLLBACK_DELAY_BOUNDS.end);
-        assert!(amount >= MIN_TRANSFER_AMOUNT);
+        assert!(CONFIG.rollback_delay_bounds.start <= rollback_delay);
+        assert!(rollback_delay < CONFIG.rollback_delay_bounds.end);
+        assert!(amount >= CONFIG.min_transfer_amount);
         assert!(sender_secrets.balance_opening.value >= amount);
+        assert_ne!(receiver, sender_secrets.public_key());
 
         let (committed_amount, opening) = Commitment::new(amount);
         let amount_proof = SimpleRangeProof::prove(&(&opening - &MIN_TRANSFER_OPENING))?;

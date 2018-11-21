@@ -7,14 +7,14 @@ use exonum::{
     storage::Fork,
 };
 
-use super::{MIN_TRANSFER_AMOUNT, ROLLBACK_DELAY_BOUNDS, SERVICE_ID};
+use super::{CONFIG, SERVICE_ID};
 use crypto::{Commitment, SimpleRangeProof};
 use secrets::EncryptedData;
 use storage::{maybe_transfer, Schema, WalletInfo};
 
 lazy_static! {
     static ref MIN_TRANSFER_COMMITMENT: Commitment =
-        Commitment::with_no_blinding(MIN_TRANSFER_AMOUNT);
+        Commitment::with_no_blinding(CONFIG.min_transfer_amount);
 }
 
 transactions! {
@@ -96,8 +96,8 @@ impl Transfer {
 
 impl Transaction for Transfer {
     fn verify(&self) -> bool {
-        if ROLLBACK_DELAY_BOUNDS.start > self.rollback_delay()
-            || ROLLBACK_DELAY_BOUNDS.end <= self.rollback_delay()
+        if CONFIG.rollback_delay_bounds.start > self.rollback_delay()
+            || CONFIG.rollback_delay_bounds.end <= self.rollback_delay()
         {
             return false;
         }

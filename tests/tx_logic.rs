@@ -15,10 +15,12 @@ use private_currency::{
     crypto::Opening,
     storage::{Event, Schema},
     transactions::{Accept, Error},
-    SecretState, Service as Currency, INITIAL_BALANCE,
+    SecretState, Service as Currency, CONFIG,
 };
 
 use std::{collections::HashSet, iter::FromIterator};
+
+const INITIAL_BALANCE: u64 = CONFIG.initial_balance;
 
 fn create_testkit() -> TestKit {
     TestKitBuilder::validator().with_service(Currency).create()

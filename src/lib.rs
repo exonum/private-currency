@@ -51,13 +51,23 @@ pub use transactions::CryptoTransactions as Transactions;
 pub const SERVICE_NAME: &str = "private_currency";
 /// Service identifier.
 pub const SERVICE_ID: u16 = 2_000;
+/// Service configuration.
+pub const CONFIG: Config = Config {
+    initial_balance: 1_000_000,
+    rollback_delay_bounds: 5..1_000,
+    min_transfer_amount: 1,
+};
 
-/// Initial amount of tokens for a new account.
-pub const INITIAL_BALANCE: u64 = 1_000_000;
-/// Acceptable bounds on the `Transfer::rollback_delay()` parameter.
-pub const ROLLBACK_DELAY_BOUNDS: Range<u32> = 5..1_000;
-/// Minimum acceptable transfer amount.
-pub const MIN_TRANSFER_AMOUNT: u64 = 1;
+/// Service configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Config {
+    /// Initial amount of tokens for a new account.
+    pub initial_balance: u64,
+    /// Acceptable bounds on the `Transfer::rollback_delay()` parameter.
+    pub rollback_delay_bounds: Range<u32>,
+    /// Minimum acceptable transfer amount.
+    pub min_transfer_amount: u64,
+}
 
 /// Privacy-preserving cryptocurrency service.
 ///
