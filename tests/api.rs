@@ -16,7 +16,9 @@ use private_currency::{
 };
 
 fn create_testkit() -> TestKit {
-    TestKitBuilder::validator().with_service(Currency).create()
+    TestKitBuilder::validator()
+        .with_service(Currency::default())
+        .create()
 }
 
 fn wallet(testkit: &TestKit, key: PublicKey, start_history_at: u64) -> CheckedWalletProof {

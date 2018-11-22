@@ -26,7 +26,7 @@ extern crate serde_derive;
 
 use exonum::{
     api::ServiceApiBuilder,
-    blockchain::{self as bc, Transaction},
+    blockchain::{self as bc, ServiceContext, Transaction},
     crypto::Hash,
     encoding::Error as EncodingError,
     messages::RawMessage,
@@ -37,12 +37,15 @@ use std::ops::Range;
 
 pub mod api;
 pub mod crypto;
+mod debug;
 mod secrets;
 pub mod storage;
 pub mod transactions;
 mod utils;
 
 pub use api::Api;
+use debug::DebuggerProbe;
+pub use debug::{DebugEvent, Debugger, DebuggerOptions};
 pub use secrets::{EncryptedData, SecretState, VerifiedTransfer};
 pub use storage::{Schema, Wallet};
 pub use transactions::CryptoTransactions as Transactions;
@@ -72,7 +75,20 @@ pub struct Config {
 /// Privacy-preserving cryptocurrency service.
 ///
 /// See crate documentation for more details.
-pub struct Service;
+#[derive(Debug, Default)]
+pub struct Service {
+    debugger_probe: Option<DebuggerProbe>,
+}
+
+impl Service {
+    pub fn debug(options: DebuggerOptions) -> (Self, Debugger) {
+        let (probe, debugger) = DebuggerProbe::create_channel(16, options);
+        let service = Service {
+            debugger_probe: Some(probe),
+        };
+        (service, debugger)
+    }
+}
 
 impl bc::Service for Service {
     fn service_id(&self) -> u16 {
@@ -93,7 +109,16 @@ impl bc::Service for Service {
     }
 
     fn before_commit(&self, fork: &mut Fork) {
+        if let Some(ref probe) = self.debugger_probe {
+            probe.on_before_commit(fork);
+        }
         Schema::new(fork).do_rollback();
+    }
+
+    fn after_commit(&self, context: &ServiceContext) {
+        if let Some(ref probe) = self.debugger_probe {
+            probe.on_after_commit(context);
+        }
     }
 
     fn wire_api(&self, builder: &mut ServiceApiBuilder) {

@@ -23,7 +23,9 @@ use std::{collections::HashSet, iter::FromIterator};
 const INITIAL_BALANCE: u64 = CONFIG.initial_balance;
 
 fn create_testkit() -> TestKit {
-    TestKitBuilder::validator().with_service(Currency).create()
+    TestKitBuilder::validator()
+        .with_service(Currency::default())
+        .create()
 }
 
 #[test]
@@ -365,4 +367,180 @@ fn expired_transfers_are_removed_from_indexes() {
     // should be zeroed.
     let bob_wallet = schema.wallet(&bob_pk).expect("Bob's wallet");
     assert_eq!(*bob_wallet.unaccepted_transfers_hash(), Hash::zero());
+}
+
+#[test]
+fn concurrent_sends_from_same_wallet_fail() {
+    let mut testkit = create_testkit();
+    let mut alice_sec = SecretState::new();
+    let mut bob_sec = SecretState::new();
+    let bob_pk = *bob_sec.public_key();
+
+    testkit
+        .create_block_with_transactions(txvec![alice_sec.create_wallet(), bob_sec.create_wallet()]);
+    alice_sec.initialize();
+    bob_sec.initialize();
+
+    let transfer = alice_sec.create_transfer(100, &bob_pk, 10);
+    let other_transfer = alice_sec.create_transfer(200, &bob_pk, 10);
+    assert_eq!(transfer.history_len(), other_transfer.history_len());
+
+    let block = testkit.create_block_with_transactions(txvec![transfer.clone(), other_transfer]);
+    assert!(block[0].status().is_ok());
+    assert_eq!(
+        block[1].status().unwrap_err().error_type(),
+        TransactionErrorType::Code(Error::OutdatedHistory as u8)
+    );
+
+    alice_sec.transfer(&transfer);
+    let schema = Schema::new(testkit.snapshot());
+    // The first entry in the past balance cache should be deleted.
+    assert!(schema.past_balance(alice_sec.public_key(), 0).is_none());
+    assert_eq!(
+        schema.past_balance(alice_sec.public_key(), 1).unwrap(),
+        alice_sec.to_public().balance,
+    );
+}
+
+#[test]
+fn send_based_on_outdated_wallet_state_works() {
+    let mut testkit = create_testkit();
+    let mut alice_sec = SecretState::new();
+    let mut bob_sec = SecretState::new();
+    let alice_pk = *alice_sec.public_key();
+    let bob_pk = *bob_sec.public_key();
+
+    testkit
+        .create_block_with_transactions(txvec![alice_sec.create_wallet(), bob_sec.create_wallet()]);
+    alice_sec.initialize();
+    bob_sec.initialize();
+
+    let alice_transfer1 = alice_sec.create_transfer(100, &bob_pk, 10);
+    testkit.create_block_with_transaction(alice_transfer1.clone());
+    alice_sec.transfer(&alice_transfer1);
+    let alice_transfer2 = alice_sec.create_transfer(100, &bob_pk, 10);
+    testkit.create_block_with_transaction(alice_transfer2.clone());
+    alice_sec.transfer(&alice_transfer2);
+
+    let schema = Schema::new(testkit.snapshot());
+    let alice_wallet = schema
+        .wallet(alice_sec.public_key())
+        .expect("Alice's wallet");
+    assert_eq!(alice_wallet.info(), alice_sec.to_public());
+
+    // Suppose Bob doesn't know about any of incoming transfers.
+    let bob_transfer1 = bob_sec.create_transfer(150, &alice_pk, 10);
+    let block = testkit.create_block_with_transaction(bob_transfer1.clone());
+    assert!(block[0].status().is_ok());
+
+    // ...Now, Bob partially synchronizes his state, receiving an event about `alice_transfer1`.
+    let accept = bob_sec
+        .verify_transfer(&alice_transfer1)
+        .expect("verify_transfer")
+        .accept;
+    testkit.create_block_with_transaction(accept);
+
+    // Bob fully synchronizes the state.
+    bob_sec.transfer(&bob_transfer1);
+    bob_sec.transfer(&alice_transfer1);
+    let schema = Schema::new(testkit.snapshot());
+    let bob_wallet = schema.wallet(&bob_pk).expect("Bob's wallet");
+    assert_eq!(bob_wallet.info(), bob_sec.to_public());
+}
+
+#[test]
+fn send_based_on_outdated_wallet_state_after_refund_works() {
+    let mut testkit = create_testkit();
+    let mut alice_sec = SecretState::new();
+    let mut bob_sec = SecretState::new();
+    let alice_pk = *alice_sec.public_key();
+    let bob_pk = *bob_sec.public_key();
+
+    testkit
+        .create_block_with_transactions(txvec![alice_sec.create_wallet(), bob_sec.create_wallet()]);
+    alice_sec.initialize();
+    bob_sec.initialize();
+
+    let alice_transfer1 = alice_sec.create_transfer(100, &bob_pk, 5);
+    testkit.create_block_with_transaction(alice_transfer1.clone());
+    alice_sec.transfer(&alice_transfer1);
+
+    // Suppose Bob is offline, so he cannot accept the transfer.
+    testkit.create_blocks_until(Height(10));
+    // Now, Alice has the transfer refunded, but she doesn't know about it.
+
+    let alice_transfer2 = alice_sec.create_transfer(200, &bob_pk, 5);
+    let block = testkit.create_block_with_transaction(alice_transfer2.clone());
+    assert!(block[0].status().is_ok());
+    alice_sec.rollback(&alice_transfer1);
+    alice_sec.transfer(&alice_transfer2);
+
+    let accept = bob_sec
+        .verify_transfer(&alice_transfer2)
+        .expect("verify_transfer")
+        .accept;
+    testkit.create_block_with_transaction(accept);
+    bob_sec.transfer(&alice_transfer2);
+
+    let schema = Schema::new(testkit.snapshot());
+    let alice_wallet = schema.wallet(&alice_pk).expect("Alice's wallet");
+    assert_eq!(alice_wallet.info(), alice_sec.to_public());
+    assert_eq!(alice_sec.balance(), INITIAL_BALANCE - 200);
+    let bob_wallet = schema.wallet(&bob_pk).expect("Bob's wallet");
+    assert_eq!(bob_wallet.info(), bob_sec.to_public());
+    assert_eq!(bob_sec.balance(), INITIAL_BALANCE + 200);
+}
+
+#[test]
+fn debugger() {
+    use private_currency::{DebugEvent, DebuggerOptions};
+    use std::{
+        sync::{Arc, RwLock},
+        thread,
+    };
+
+    let (currency, debugger) = Currency::debug(DebuggerOptions::default());
+    let mut testkit = TestKitBuilder::validator().with_service(currency).create();
+
+    let debug_events = Arc::new(RwLock::new(vec![]));
+    let debug_events_ = debug_events.clone();
+    let handle = thread::spawn(move || {
+        for event in debugger {
+            debug_events_.write().expect("debug_events").push(event);
+        }
+    });
+
+    let mut alice_sec = SecretState::new();
+    let mut bob_sec = SecretState::new();
+    let alice_pk = *alice_sec.public_key();
+    let bob_pk = *bob_sec.public_key();
+
+    testkit
+        .create_block_with_transactions(txvec![alice_sec.create_wallet(), bob_sec.create_wallet()]);
+    alice_sec.initialize();
+    bob_sec.initialize();
+
+    let alice_transfer = alice_sec.create_transfer(100, &bob_pk, 5);
+    let bob_transfer = bob_sec.create_transfer(200, &alice_pk, 7);
+    testkit.create_block_with_transactions(txvec![alice_transfer.clone(), bob_transfer.clone(),]);
+    testkit.create_blocks_until(Height(10)); // let both transfers expire
+
+    let debug_events = debug_events.read().expect("read debug_events").clone();
+
+    assert_eq!(
+        debug_events,
+        vec![
+            DebugEvent::RolledBack {
+                transfer: alice_transfer,
+                height: Height(8)
+            },
+            DebugEvent::RolledBack {
+                transfer: bob_transfer,
+                height: Height(10)
+            },
+        ]
+    );
+
+    drop(testkit);
+    handle.join().unwrap();
 }
