@@ -83,6 +83,8 @@ pub struct SecretState {
     // provided that the owner knows the secret key to the wallet; indeed, it's enough
     // to download wallet history anew and replay it.
     balance_opening: Opening,
+
+    history_len: u64,
 }
 
 impl fmt::Debug for SecretState {
@@ -127,6 +129,7 @@ impl SecretState {
             signing_key,
             encryption_sk,
             balance_opening: Opening::with_no_blinding(0),
+            history_len: 0,
         }
     }
 
@@ -173,8 +176,10 @@ impl SecretState {
     /// This method should be called after `CreateWallet` transaction is committed. It should
     /// only be called once.
     pub fn initialize(&mut self) {
+        assert_eq!(self.history_len, 0);
         debug_assert_eq!(self.balance_opening, Opening::with_no_blinding(0));
         self.balance_opening = Opening::with_no_blinding(CONFIG.initial_balance);
+        self.history_len = 1;
     }
 
     /// Verifies an incoming transfer.
@@ -229,6 +234,8 @@ impl SecretState {
         } else {
             panic!("unrelated transfer");
         }
+
+        self.history_len += 1;
     }
 
     /// Rolls back a previously committed transfer.
@@ -249,6 +256,7 @@ impl SecretState {
         } else {
             panic!("unrelated transfer");
         }
+        self.history_len += 1;
     }
 
     /// Checks if this state corresponds to the supplied public info about a `Wallet`.
@@ -293,6 +301,7 @@ impl Transfer {
             &sender_secrets.verifying_key,
             receiver,
             rollback_delay,
+            sender_secrets.history_len,
             committed_amount,
             amount_proof,
             sufficient_balance_proof,
@@ -343,7 +352,7 @@ mod tests {
         let transfer =
             Transfer::create(42, &receiver.public_key, 10, &sender_sec).expect("transfer");
         assert!(transfer.verify_stateless());
-        assert!(transfer.verify_stateful(&sender));
+        assert!(transfer.verify_stateful(&sender.balance));
 
         let opening = transfer
             .encrypted_data()
@@ -384,7 +393,8 @@ mod tests {
         let transfer = Transfer::new(
             &sender_sec.verifying_key,
             &receiver,
-            10,
+            10, // rollback delay
+            1,  // history length
             committed_amount,
             amount_proof,
             sufficient_balance_proof,

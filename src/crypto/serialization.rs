@@ -8,8 +8,12 @@ use exonum::encoding::{
     },
     CheckedOffset, Field, Result as CheckResult, SegmentField,
 };
+use exonum::{
+    crypto::{hash, CryptoHash, Hash},
+    storage::StorageValue,
+};
 
-use std::error::Error;
+use std::{borrow::Cow, error::Error};
 
 use super::proofs::{Commitment, SimpleRangeProof};
 
@@ -40,6 +44,23 @@ impl<'a> Field<'a> for Commitment {
         Commitment::from_slice(&buffer[from..to])
             .map(|_| latest_segment)
             .ok_or("non-canonical `Commitment`".into())
+    }
+}
+
+impl StorageValue for Commitment {
+    fn into_bytes(self) -> Vec<u8> {
+        self.to_bytes()
+    }
+
+    fn from_bytes(value: Cow<[u8]>) -> Self {
+        Commitment::from_slice(value.as_ref())
+            .expect("Cannot restore `Commitment` from trusted source")
+    }
+}
+
+impl CryptoHash for Commitment {
+    fn hash(&self) -> Hash {
+        hash(&self.to_bytes())
     }
 }
 
