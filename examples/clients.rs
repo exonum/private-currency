@@ -15,6 +15,7 @@ extern crate log;
 extern crate private_currency;
 extern crate rand;
 extern crate reqwest;
+extern crate tempdir;
 
 use exonum::{
     api::node::public::explorer::TransactionQuery,
@@ -22,15 +23,16 @@ use exonum::{
     crypto::{CryptoHash, Hash, PublicKey},
     explorer::TransactionInfo,
     node::{Node, NodeApiConfig, NodeConfig},
-    storage::MemoryDB,
+    storage::{RocksDB, DbOptions},
 };
 use private_currency::{
     api::{CheckedWalletProof, FullEvent, TrustAnchor, WalletProof, WalletQuery},
     transactions::{Accept, CreateWallet, Transfer},
-    DebugEvent, DebuggerOptions, SecretState, Service as CurrencyService,
+    DebugEvent, DebuggerOptions, SecretState, Service as CurrencyService, CONFIG,
 };
 use rand::{seq::sample_iter, thread_rng, Rng};
 use reqwest::Client as HttpClient;
+use tempdir::TempDir;
 
 use std::{
     cmp,
@@ -158,14 +160,14 @@ impl Client {
                     }
                     FullEvent::Transfer(ref transfer) => {
                         self.log_info(&format!(
-                            "received event: `Transfer`, txhash = {:?}",
+                            "received event: `Transfer`, tx_hash = {:?}",
                             transfer.hash()
                         ));
                         self.state.transfer(transfer);
                     }
                     FullEvent::Rollback(ref transfer) => {
                         self.log_info(&format!(
-                            "received event: `Rollback`, txhash = {:?}",
+                            "received event: `Rollback`, tx_hash = {:?}",
                             transfer.hash()
                         ));
                         self.state.rollback(transfer);
@@ -192,14 +194,14 @@ impl Client {
         let accepts = transfers.iter().flat_map(|transfer| {
             if let Some(verified) = self.state.verify_transfer(transfer) {
                 self.log_info(&format!(
-                    "received transfer: {} (txhash = {:?})",
+                    "received transfer: {}, tx_hash = {:?}",
                     verified.value(),
                     transfer.hash()
                 ));
                 Some(verified.accept)
             } else {
                 self.log_error(&format!(
-                    "received incorrect transfer (txhash = {:?})",
+                    "received incorrect transfer, tx_hash = {:?}",
                     transfer.hash()
                 ));
                 None
@@ -213,7 +215,7 @@ impl Client {
 
     fn send_create_wallet(&self, create_wallet: &CreateWallet) {
         self.log_info(&format!(
-            "sending `CreateWallet` (txhash = {:?})",
+            "sending `CreateWallet`, tx_hash = {:?}",
             create_wallet.hash()
         ));
         let mut response = self
@@ -228,7 +230,7 @@ impl Client {
 
     fn send_transfer(&mut self, transfer: &Transfer, amount: u64) {
         self.log_info(&format!(
-            "sending `Transfer` (amount = {}) to {:?}, txhash = {:?}",
+            "sending `Transfer` (amount = {}) to {:?}, tx_hash = {:?}",
             amount,
             transfer.to(),
             transfer.hash()
@@ -249,7 +251,7 @@ impl Client {
             .unconfirmed_transfer
             .as_ref()
             .expect("unconfirmed transfer");
-        self.log_info(&format!("polling transfer status, txhash = {:?}", tx_hash));
+        self.log_info(&format!("polling transfer status, tx_hash = {:?}", tx_hash));
 
         let mut response = self
             .http
@@ -257,6 +259,12 @@ impl Client {
             .query(&TransactionQuery { hash: tx_hash })
             .send()
             .expect("transaction info");
+
+        if !response.status().is_success() {
+            self.log_error(&format!("transfer disappeared, tx_hash = {:?}", tx_hash));
+            self.unconfirmed_transfer = None;
+            return;
+        }
 
         let response: TransactionInfo<Transfer> = response.json().expect("parse transaction info");
         if let Some(committed) = response.as_committed() {
@@ -277,7 +285,7 @@ impl Client {
 
     fn send_accept(&self, accept: &Accept) {
         self.log_info(&format!(
-            "sending `Accept` for transfer {:?} (txhash = {:?})",
+            "sending `Accept` for transfer {:?}, tx_hash = {:?}",
             accept.transfer_id(),
             accept.hash()
         ));
@@ -312,10 +320,7 @@ impl Client {
             } else {
                 if let Some(peer) = self.client_env.random_peer(self.state.public_key()) {
                     // Create a transfer to a random wallet.
-                    let amount = rng.gen_range(0, cmp::min(10_000, self.state.balance()));
-                    if amount == 0 {
-                        continue;
-                    }
+                    let amount = rng.gen_range(CONFIG.min_transfer_amount, cmp::min(10_000, self.state.balance()));
                     let transfer = self.state.create_transfer(amount, &peer, 10);
                     self.send_transfer(&transfer, amount);
                 }
@@ -380,7 +385,7 @@ fn main() {
             match event {
                 DebugEvent::RolledBack { height, transfer } => {
                     warn!(
-                        "rolled back transfer from {:?} to {:?}, txhash {:?}, at height {}",
+                        "rolled back transfer from {:?} to {:?}, tx_hash {:?}, at height {}",
                         transfer.from(),
                         transfer.to(),
                         transfer.hash(),
@@ -393,8 +398,11 @@ fn main() {
 
     // Start node thread.
     let handle = thread::spawn(|| {
-        info!("Creating in-memory database...");
-        let node = Node::new(MemoryDB::new(), vec![Box::new(service)], node_cfg, None);
+        info!("Creating database...");
+        let dir = TempDir::new("exonum").expect("tempdir");
+        let db = RocksDB::open(dir.path(), &DbOptions::default()).expect("rocksdb");
+
+        let node = Node::new(db, vec![Box::new(service)], node_cfg, None);
         info!("Starting a single node...");
         info!("Blockchain is ready for transactions!");
         node.run().unwrap();
