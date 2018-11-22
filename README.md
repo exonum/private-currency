@@ -52,13 +52,28 @@ To prevent deadlocks, each transfer transaction specifies the timelock parameter
 a la Bitcoin's `CSV` opcode). If this timelock expires and the receiver of the transfer still hasn't accepted it,
 the transfer is automatically refunded to the sender.
 
-## TODO list
+### Referencing past wallet states
 
-- [x] Check `a > 0` instead of `a >= 0` in transfers
-- [ ] Allow to reference a past commitment to sender's balance (but not before the latest outgoing transfer)
-  in order to boost concurrency
-- [x] Merkelize storage data
-- [ ] Test more stuff
+The scheme described above is *almost* practical, except for one thing: the sender might not now her balance
+precisely at the moment of transfer! Indeed, it might happen that the sender's stray accept transaction or a refund
+are processed just before the sender's transfer (but after the transfer has been created, signed and sent to
+the network).
+
+In order to alleviate this problem, we allow the sender to specify what she thinks is the length
+of her wallet history `history_len`. The proof of sufficient balance is then checked against the balance commitment
+at this point in history. For this scheme to be safe, we demand that `history_len - 1 >= last_send_index`,
+where `last_send_index` is the index of the latest outgoing transfer in the sender's history (we keep `last_send_index`
+directly in the sender's account details). If this inequality holds, it's safe to process the transfer;
+we know for sure that since `last_send_index` the sender's balance can only increase (via incoming transfers
+and/or refunds). Thus, if we subtract the transfer amount from the sender's *current* balance, we still end up with
+non-negative balance.
+
+## Limitations
+
+Even with heuristics described above, the scheme is limiting: before making a transfer,
+the sender needs to know that there are no other unconfirmed outgoing transfers. This problem
+could be solved with auto-increment counters *a la* Ethereum, or other means to order transactions originating
+from the same user.
 
 ## Building and testing
 
