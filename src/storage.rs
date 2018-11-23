@@ -218,7 +218,7 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
     /// Returns the state hash of the service.
     ///
     /// The state hash directly commits to a single table of the service, wallets.
-    /// Other Merkelized tables (wallet histories and unaccepted transfers are connected
+    /// Other Merkelized tables (wallet histories and unaccepted transfers) are connected
     /// to the state via fields in [`Wallet`] records.
     ///
     /// [`Wallet`]: self::Wallet
@@ -245,6 +245,7 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
 
     /// Returns all unaccepted incoming transfers for the account associated
     /// with the given public `key`.
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::let_and_return))]
     pub fn unaccepted_transfers(&self, key: &PublicKey) -> HashSet<Hash> {
         let index = self.unaccepted_transfers_index(key);
         let hashes = index.keys().collect();
@@ -256,6 +257,7 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
     }
 
     /// Returns all history entries for the specified account.
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::let_and_return))]
     pub fn history(&self, key: &PublicKey) -> Vec<Event> {
         let index = self.history_index(key);
         let hashes = index.iter().collect();
@@ -279,6 +281,7 @@ impl<T: AsRef<dyn Snapshot>> Schema<T> {
     /// Returns hashes for all unaccepted transfers that should rolled back at
     /// the specified blockchain height.
     #[doc(hidden)]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::let_and_return))]
     pub fn rollback_transfers(&self, height: Height) -> Vec<Hash> {
         let index = self.rollback_index(height);
         let hashes = index.iter().collect();
@@ -356,7 +359,7 @@ impl<'a> Schema<&'a mut Fork> {
         };
 
         let rollback_height =
-            CoreSchema::new(&self.inner).height().next().0 + transfer.rollback_delay() as u64;
+            CoreSchema::new(&self.inner).height().next().0 + u64::from(transfer.rollback_delay());
         let rollback_height = Height(rollback_height);
         self.rollback_index_mut(rollback_height)
             .insert(transfer.hash());
@@ -378,7 +381,7 @@ impl<'a> Schema<&'a mut Fork> {
             .get(transfer_id)
             .expect("transfer");
         let transfer = Transfer::from_raw(transfer).expect("parse transfer");
-        let rollback_height = Height(height.0 + transfer.rollback_delay() as u64);
+        let rollback_height = Height(height.0 + u64::from(transfer.rollback_delay()));
         debug_assert!(rollback_height >= core_schema.height());
         rollback_height
     }

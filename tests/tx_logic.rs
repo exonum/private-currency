@@ -32,8 +32,8 @@ fn create_testkit() -> TestKit {
 fn create_2wallets_and_transfer_between_them() {
     let mut testkit = create_testkit();
 
-    let mut alice_sec = SecretState::new();
-    let bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let bob_sec = SecretState::with_random_keypair();
 
     let create_wallet_for_alice = alice_sec.create_wallet();
     testkit.create_block_with_transactions(txvec![
@@ -102,8 +102,8 @@ fn answering_payment() {
 
     let mut testkit = create_testkit();
 
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
     alice_sec.initialize();
     bob_sec.initialize();
     let transfer_amount = INITIAL_BALANCE / 3;
@@ -118,7 +118,7 @@ fn answering_payment() {
     assert!(block.iter().all(|tx| tx.status().is_ok()));
     // Check that the transfer is in pending rollbacks at appropriate height.
     let schema = Schema::new(testkit.snapshot());
-    let rollback_height = Height(testkit.height().0 + ROLLBACK_DELAY as u64);
+    let rollback_height = Height(testkit.height().0 + u64::from(ROLLBACK_DELAY));
     assert_eq!(
         schema.rollback_transfers(rollback_height),
         vec![transfer.hash()]
@@ -154,8 +154,8 @@ fn automatic_rollback() {
 
     let mut testkit = create_testkit();
 
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
     alice_sec.initialize();
     bob_sec.initialize();
     let transfer_amount = INITIAL_BALANCE / 3;
@@ -168,7 +168,7 @@ fn automatic_rollback() {
         transfer.clone(),
     ]);
     alice_sec.transfer(&transfer);
-    let rollback_height = Height(testkit.height().0 + ROLLBACK_DELAY as u64);
+    let rollback_height = Height(testkit.height().0 + u64::from(ROLLBACK_DELAY));
     testkit.create_blocks_until(rollback_height.next().next());
 
     let schema = Schema::new(testkit.snapshot());
@@ -196,7 +196,7 @@ fn unauthorized_accept() {
 
     let (pk, sk) = crypto::gen_keypair();
     let mut alice_sec = SecretState::from_keypair(pk, sk.clone());
-    let mut bob_sec = SecretState::new();
+    let mut bob_sec = SecretState::with_random_keypair();
     alice_sec.initialize();
     bob_sec.initialize();
     let transfer_amount = INITIAL_BALANCE / 3;
@@ -233,9 +233,9 @@ where
     F: FnOnce(&mut TestKit, &Accept, &Accept),
 {
     let mut testkit = create_testkit();
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
-    let mut carol_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
+    let mut carol_sec = SecretState::with_random_keypair();
 
     testkit.create_block_with_transactions(txvec![
         alice_sec.create_wallet(),
@@ -342,8 +342,8 @@ fn accept_several_transfers_in_multiple_blocks_unordered() {
 #[test]
 fn expired_transfers_are_removed_from_indexes() {
     let mut testkit = create_testkit();
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
     let bob_pk = *bob_sec.public_key();
 
     testkit
@@ -372,8 +372,8 @@ fn expired_transfers_are_removed_from_indexes() {
 #[test]
 fn concurrent_sends_from_same_wallet_fail() {
     let mut testkit = create_testkit();
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
     let bob_pk = *bob_sec.public_key();
 
     testkit
@@ -405,8 +405,8 @@ fn concurrent_sends_from_same_wallet_fail() {
 #[test]
 fn send_based_on_outdated_wallet_state_works() {
     let mut testkit = create_testkit();
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
     let alice_pk = *alice_sec.public_key();
     let bob_pk = *bob_sec.public_key();
 
@@ -451,8 +451,8 @@ fn send_based_on_outdated_wallet_state_works() {
 #[test]
 fn send_based_on_outdated_wallet_state_after_refund_works() {
     let mut testkit = create_testkit();
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
     let alice_pk = *alice_sec.public_key();
     let bob_pk = *bob_sec.public_key();
 
@@ -510,8 +510,8 @@ fn debugger() {
         }
     });
 
-    let mut alice_sec = SecretState::new();
-    let mut bob_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
+    let mut bob_sec = SecretState::with_random_keypair();
     let alice_pk = *alice_sec.public_key();
     let bob_pk = *bob_sec.public_key();
 

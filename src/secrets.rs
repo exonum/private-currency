@@ -116,7 +116,7 @@ impl VerifiedTransfer {
 impl SecretState {
     /// Creates an uninitialized state. The keypair for cryptographic operations
     /// is generated randomly.
-    pub fn new() -> Self {
+    pub fn with_random_keypair() -> Self {
         let (verifying_key, signing_key) = gen_keypair();
         Self::from_keypair(verifying_key, signing_key)
     }
@@ -133,7 +133,7 @@ impl SecretState {
         }
     }
 
-    /// Gets the public key of the wallet (aka verifying Ed25519 for digital signatures).
+    /// Gets the public key of the wallet (aka verifying Ed25519 key for digital signatures).
     pub fn public_key(&self) -> &PublicKey {
         &self.verifying_key
     }
@@ -155,11 +155,11 @@ impl SecretState {
     /// This method will panic if the transfer violates constraints imposed by the transaction
     /// logic of the service:
     ///
-    /// - `amount` is lower than [`MIN_TRANSFER_AMOUNT`]
+    /// - `amount` is out of bounds specified by service [`CONFIG`]
     /// - `receiver` is same as the sender
     /// - `rollback_delay` is not within acceptable range
     ///
-    /// [`MIN_TRANSFER_AMOUNT`]: ::MIN_TRANSFER_AMOUNT
+    /// [`CONFIG`]: ::CONFIG
     pub fn create_transfer(
         &self,
         amount: u64,
@@ -317,7 +317,7 @@ mod tests {
     use exonum::blockchain::Transaction;
 
     fn gen_wallet(balance: u64) -> SecretState {
-        let mut secrets = SecretState::new();
+        let mut secrets = SecretState::with_random_keypair();
         secrets.balance_opening = Opening::with_no_blinding(balance);
         secrets
     }

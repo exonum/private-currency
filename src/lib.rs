@@ -6,14 +6,14 @@
 //! The service uses [pure Rust implementation][bulletproofs-rs] for [Bulletproofs][bulletproofs],
 //! a technique allowing to prove a range of a value hidden with the help of
 //! the [Pedersen commitment scheme][pedersen]. Commitments are used
-//! instead of cleartext values both in account details and in transfer transactions.
+//! instead of  values both in account details and in transfer transactions.
 //!
 //! ## Accounts
 //!
 //! The service uses account-based scheme similar to one used for ERC-20 tokens in Ethereum;
 //! it is also used in simpler [demo cryptocurrency services for Exonum][demo].
 //! Unlike other demos, each wallet contains a _commitment_ to the current
-//! balance `Comm(bal; r)` instead of its cleartext value `bal`. Only the owner of the account
+//! balance `Comm(bal; r)` instead of its plaintext value `bal`. Only the owner of the account
 //! knows the opening to this commitment.
 //!
 //! ## Transfers
@@ -46,7 +46,7 @@
 //!
 //! The _sender's balance_ decreases immediately after the transfer transaction is committed
 //! (recall that it is stored as a commitment, so we perform arithmetic on commitments rather than
-//! cleartext values). The _receiver's balance_ is not changed immediately; it is only increased
+//! plaintext values). The _receiver's balance_ is not changed immediately; it is only increased
 //! (again, using commitment arithmetic) only after her appropriate acceptance transaction
 //! is committed.
 //!
@@ -165,6 +165,10 @@ pub struct Service {
 }
 
 impl Service {
+    /// Creates a service with an attached debugger.
+    ///
+    /// The service created in this way has high associated performance penalty. Use for
+    /// debugging only; otherwise, use `Service::default()`.
     pub fn debug(options: DebuggerOptions) -> (Self, Debugger) {
         let (probe, debugger) = DebuggerProbe::create_channel(16, options);
         let service = Service {

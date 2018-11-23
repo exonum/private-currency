@@ -23,7 +23,7 @@ use exonum::{
     crypto::{CryptoHash, Hash, PublicKey},
     explorer::TransactionInfo,
     node::{Node, NodeApiConfig, NodeConfig},
-    storage::{RocksDB, DbOptions},
+    storage::{DbOptions, RocksDB},
 };
 use private_currency::{
     api::{CheckedWalletProof, FullEvent, TrustAnchor, WalletProof, WalletQuery},
@@ -99,7 +99,7 @@ impl Client {
     const TX_STATUS_URL: &'static str = "http://127.0.0.1:8080/api/explorer/v1/transactions";
 
     fn new(client_env: ClientEnv) -> Self {
-        let state = SecretState::new();
+        let state = SecretState::with_random_keypair();
         client_env.add(*state.public_key());
 
         let client = Client {
@@ -317,13 +317,14 @@ impl Client {
 
             if self.unconfirmed_transfer.is_some() {
                 self.poll_transfer_status();
-            } else {
-                if let Some(peer) = self.client_env.random_peer(self.state.public_key()) {
-                    // Create a transfer to a random wallet.
-                    let amount = rng.gen_range(CONFIG.min_transfer_amount, cmp::min(10_000, self.state.balance()));
-                    let transfer = self.state.create_transfer(amount, &peer, 10);
-                    self.send_transfer(&transfer, amount);
-                }
+            } else if let Some(peer) = self.client_env.random_peer(self.state.public_key()) {
+                // Create a transfer to a random wallet.
+                let amount = rng.gen_range(
+                    CONFIG.min_transfer_amount,
+                    cmp::min(10_000, self.state.balance()),
+                );
+                let transfer = self.state.create_transfer(amount, &peer, 10);
+                self.send_transfer(&transfer, amount);
             }
 
             sleep();

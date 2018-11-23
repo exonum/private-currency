@@ -17,7 +17,7 @@ use super::SERVICE_ID;
 use storage::{maybe_create_wallet, maybe_transfer, Event, EventTag, Schema, Wallet};
 use transactions::{CreateWallet, CryptoTransactions, Transfer};
 
-pub use utils::{TrustAnchor, VerifyError as BlockVerifyError};
+pub use utils::{BlockVerifyError, TrustAnchor};
 
 /// HTTP API for the private cryptocurrency service.
 #[derive(Debug)]
@@ -55,7 +55,7 @@ pub enum FullEvent {
 impl FullEvent {
     /// Converts `Event` into its full form by loading the transaction data
     /// from the provided snapshot.
-    fn from<T: AsRef<dyn Snapshot>>(event: Event, snapshot: T) -> Self {
+    fn from<T: AsRef<dyn Snapshot>>(event: &Event, snapshot: T) -> Self {
         let id = event.transaction_hash();
         match event.tag() {
             tag if tag == EventTag::CreateWallet as u8 => {
@@ -98,7 +98,7 @@ impl FullEvent {
 ///
 /// The proof contains several parts:
 ///
-/// - Block header together with authorizing [`Precommit`]s
+/// - Block header together with authorizing `Precommit`s
 /// - Proof connecting the block header with the wallets table in the storage,
 ///   and then with a particular wallet.
 /// - Information about new events in the wallet history and unaccepted incoming transfers,
@@ -108,8 +108,6 @@ impl FullEvent {
 ///
 /// The proof can also be used to prove the absence of a wallet. In this case, the last part
 /// of the proof (history and unaccepted transfers) is empty.
-///
-/// [`Precommit`]: ::exonum::blockchain::Precommit
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WalletProof {
     block_proof: BlockProof,
@@ -131,12 +129,12 @@ pub struct CheckedWalletProof {
     /// New events concerning the wallet. The event with index `0` corresponds to an event
     /// at index `query.start_history_at` in the wallet history, and so on.
     ///
-    /// If [`wallet`](#field.wallet) is `None`, the `history` is empty.
+    /// If [`wallet`](#structfield.wallet) is `None`, the `history` is empty.
     pub history: Vec<FullEvent>,
 
     /// Unaccepted incoming transfers for the wallet.
     ///
-    /// If [`wallet`](#field.wallet) is `None`, the `unaccepted_transfers` vector is empty.
+    /// If [`wallet`](#structfield.wallet) is `None`, the `unaccepted_transfers` vector is empty.
     pub unaccepted_transfers: Vec<Transfer>,
 }
 
@@ -233,7 +231,7 @@ impl fmt::Display for ProofDescription {
         match self {
             WalletsTable => f.write_str("wallets table"),
             Wallet => f.write_str("wallet"),
-            History => f.write_str("events"),
+            History => f.write_str("history"),
             UnacceptedTransfers => f.write_str("unaccepted transfers"),
         }
     }
@@ -297,7 +295,7 @@ impl WalletProof {
             .all_entries()
             .into_iter()
             .find(|&(k, _)| k == key)
-            .ok_or(VerifyError::MissingKey(proof_description))?;
+            .ok_or_else(|| VerifyError::MissingKey(proof_description))?;
         Ok(value.cloned())
     }
 
@@ -364,7 +362,7 @@ impl WalletContentsProof {
         let start_history_at = query.start_history_at;
         let history: Vec<_> = history_index
             .iter_from(start_history_at)
-            .map(|event| FullEvent::from(event, &snapshot))
+            .map(|event| FullEvent::from(&event, &snapshot))
             .collect();
         // ...and the corresponding proof.
         let history_proof = if history.is_empty() {
@@ -467,6 +465,11 @@ impl WalletContentsProof {
     }
 }
 
+// Required for conversions in `Service::wire`.
+#[cfg_attr(
+    feature = "cargo-clippy",
+    allow(clippy::needless_pass_by_value)
+)]
 impl Api {
     /// Returns information about a single wallet. The information is supported with
     /// cryptographic proofs, allowing client applications to minimize trust in their server

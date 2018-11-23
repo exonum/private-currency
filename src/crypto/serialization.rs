@@ -43,7 +43,7 @@ impl<'a> Field<'a> for Commitment {
         debug_assert_eq!((to - from) as u32, Self::field_size());
         Commitment::from_slice(&buffer[from..to])
             .map(|_| latest_segment)
-            .ok_or("non-canonical `Commitment`".into())
+            .ok_or_else(|| "non-canonical `Commitment`".into())
     }
 }
 
@@ -72,7 +72,7 @@ impl FromHex for Commitment {
         if bytes.len() != Self::BYTE_LEN {
             Err("invalid hex string length")?;
         }
-        Commitment::from_slice(&bytes).ok_or("non-canonical `Commitment`".to_owned())
+        Commitment::from_slice(&bytes).ok_or_else(|| "non-canonical `Commitment`".to_owned())
     }
 }
 
@@ -100,20 +100,20 @@ fn commitment_roundtrip() {
     use exonum::{encoding::serialize::json::reexport as serde_json, storage::StorageValue};
 
     encoding_struct! {
-        struct Foo {
-            bar: u32,
-            baz: Commitment,
+        struct Value {
+            first: u32,
+            second: Commitment,
         }
     }
 
-    let foo = Foo::new(123, Commitment::new(123).0);
-    let foo_json = serde_json::to_string(&foo).expect("to_string");
-    let foo_copy = serde_json::from_str(&foo_json).expect("from_str");
-    assert_eq!(foo, foo_copy);
+    let value = Value::new(123, Commitment::new(123).0);
+    let value_json = serde_json::to_string(&value).expect("to_string");
+    let value_copy = serde_json::from_str(&value_json).expect("from_str");
+    assert_eq!(value, value_copy);
 
-    let foo_bytes = foo.clone().into_bytes();
-    let foo_copy = Foo::from_bytes(foo_bytes.into());
-    assert_eq!(foo, foo_copy);
+    let value_bytes = value.clone().into_bytes();
+    let value_copy = Value::from_bytes(value_bytes.into());
+    assert_eq!(value, value_copy);
 }
 
 impl<'a> SegmentField<'a> for SimpleRangeProof {
@@ -205,21 +205,21 @@ fn proof_roundtrip() {
     use exonum::{encoding::serialize::json::reexport as serde_json, storage::StorageValue};
 
     encoding_struct! {
-        struct Foo {
-            bar: u32,
-            baz: SimpleRangeProof,
-            qux: &str,
+        struct Value {
+            first: u32,
+            second: SimpleRangeProof,
+            third: &str,
         }
     }
 
     let opening = Opening::with_no_blinding(12345);
     let proof = SimpleRangeProof::prove(&opening).expect("prove");
-    let foo = Foo::new(123, proof, "qux");
-    let foo_json = serde_json::to_string(&foo).expect("to_string");
-    let foo_copy = serde_json::from_str(&foo_json).expect("from_str");
-    assert_eq!(foo, foo_copy);
+    let value = Value::new(123, proof, "qux");
+    let value_json = serde_json::to_string(&value).expect("to_string");
+    let value_copy = serde_json::from_str(&value_json).expect("from_str");
+    assert_eq!(value, value_copy);
 
-    let foo_bytes = foo.clone().into_bytes();
-    let foo_copy = Foo::from_bytes(foo_bytes.into());
-    assert_eq!(foo, foo_copy);
+    let value_bytes = value.clone().into_bytes();
+    let value_copy = Value::from_bytes(value_bytes.into());
+    assert_eq!(value, value_copy);
 }

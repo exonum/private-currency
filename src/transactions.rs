@@ -18,6 +18,7 @@ lazy_static! {
 }
 
 transactions! {
+    /// Transactions accepted by the service.
     pub CryptoTransactions {
         const SERVICE_ID = SERVICE_ID;
 
@@ -33,7 +34,10 @@ transactions! {
             key: &PublicKey,
         }
 
-        /// Transfer from one wallet to the other wallet.
+        /// Transfer from one wallet to another wallet.
+        ///
+        /// See [crate docs](crate) for explanation about fields and workflow of `Transfer`
+        /// transactions.
         struct Transfer {
             /// Ed25519 public key of the sender. The transaction must be signed with the
             /// corresponding secret key.
@@ -203,10 +207,18 @@ pub enum Error {
     #[fail(display = "the range proof for the sender's sufficient account balance is incorrect")]
     IncorrectProof = 3,
 
-    #[fail(display = "")]
+    /// There has been another outgoing transfer since the referenced point in time.
+    ///
+    /// Can occur in [`Transfer`](self::Transfer).
+    #[fail(
+        display = "there has been another outgoing transfer since the referenced point in time"
+    )]
     OutdatedHistory = 4,
 
-    #[fail(display = "")]
+    /// Transfer refers to wallet history length exceeding real one.
+    ///
+    /// Can occur in [`Transfer`](self::Transfer).
+    #[fail(display = "transfer refers to wallet history length exceeding real one")]
     InvalidHistoryRef = 5,
 
     /// An `Accept` transaction references an unknown transfer.

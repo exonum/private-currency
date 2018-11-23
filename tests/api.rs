@@ -47,10 +47,10 @@ fn wallet(testkit: &TestKit, key: PublicKey, start_history_at: u64) -> CheckedWa
 fn wallet_api() {
     let mut testkit = create_testkit();
 
-    let mut alice_sec = SecretState::new();
+    let mut alice_sec = SecretState::with_random_keypair();
     let alice_pk = *alice_sec.public_key();
-    let mut bob_sec = SecretState::new();
-    let mut carol_sec = SecretState::new();
+    let mut bob_sec = SecretState::with_random_keypair();
+    let mut carol_sec = SecretState::with_random_keypair();
 
     testkit.create_block_with_transactions(txvec![
         alice_sec.create_wallet(),

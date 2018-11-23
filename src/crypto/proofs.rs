@@ -86,7 +86,7 @@ impl Commitment {
 
     /// Creates a commitment from the given opening.
     pub fn from_opening(opening: &Opening) -> Self {
-        let inner = PEDERSEN_GENS.commit(Scalar::from(opening.value), opening.blinding.clone());
+        let inner = PEDERSEN_GENS.commit(Scalar::from(opening.value), opening.blinding);
         Commitment { inner }
     }
 
