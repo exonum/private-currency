@@ -14,6 +14,10 @@ See Rust docs of the service crate for more details.
 Notice that the service requires `nightly` Rust channel as of now; the `bulletproofs` crate doesn't build otherwise.
 There are some unit and integration tests and also examples. See their documentation for more details.
 
+## License
+
+Licensed under the Apache License (Version 2.0). See [LICENSE](LICENSE) for details.
+
 [Exonum]: https://exonum.com/
 [bulletproofs-rs]: https://doc.dalek.rs/bulletproofs/
 [bulletproofs]: https://eprint.iacr.org/2017/1066.pdf
