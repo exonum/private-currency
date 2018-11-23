@@ -7,7 +7,7 @@ transferred among registered accounts (but not the identities transacting accoun
 
 ## Description
 
-See Rust docs of the service crate for more details.
+See [implementation details](docs/implementation.md).
 
 ## Building and testing
 
