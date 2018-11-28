@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Alex Ostrovski <ostrovski.alex@gmail.com>"]
 license = "Apache-2.0"
 publish = false
+exclude = ["misc"]
 
 [dependencies]
 exonum = "=0.9.4"
