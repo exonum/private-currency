@@ -1,5 +1,21 @@
 language: rust
 
+addons:
+  apt:
+    sources:
+    - sourceline: 'ppa:giskou/librocksdb'
+    packages:
+    - gcc
+    - g++
+    - libssl-dev
+    - libcurl4-openssl-dev
+    - libelf-dev
+    - libdw-dev
+    - binutils-dev
+    - libiberty-dev
+    - libsnappy-dev
+    - librocksdb
+
 branches:
   only:
   - master
@@ -9,13 +25,15 @@ branches:
   - /-release$/
 
 rust:
-- nightly-2018-11-12
+- nightly-2018-11-13
 
 env:
   global:
   - SODIUM_VERS=1.0.13
   - CARGO_INCREMENTAL=1
   - DEADLINKS_VERS=0.3.0
+  - ROCKSDB_LIB_DIR=/usr/lib/x86_64-linux-gnu
+  - SNAPPY_LIB_DIR=/usr/lib/x86_64-linux-gnu
 
 cache:
   directories:
@@ -55,5 +73,5 @@ script:
 - cargo build --example clients
 - |
   cargo clean --doc &&
-  rustdoc -- -Z unstable-options --extern-html-root-url exonum=https://docs.rs/exonum/0.9.4 &&
+  cargo rustdoc -- -Z unstable-options --html-in-header misc/hide-blanket-impls.html --extern-html-root-url exonum=https://docs.rs/exonum/0.9.4 &&
   cargo deadlinks --dir target/doc
