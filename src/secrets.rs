@@ -30,6 +30,11 @@ lazy_static! {
 
 encoding_struct! {
     /// Encrypted information embedded into transfers.
+    ///
+    /// # Implementation note
+    ///
+    /// Using byte slices for `nonce` and `encrypted_data` is a simplification; they both
+    /// have known constant byte size, so it could make sense to be more type-safe.
     struct EncryptedData {
         /// Cryptographic nonce for the `box` routine from `libsodium`.
         nonce: &[u8],

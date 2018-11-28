@@ -18,7 +18,7 @@ knows the opening to this commitment.
 Each transfer transaction contains a commitment to the transferred amount `C_a = Comm(a; r)`.
 It is supplied with two range proofs:
 
-- The amount is non-negative: `a >= 0`
+- The amount is non-negative: `a > 0`
 - The sender has sufficient balance on his account: `sender.bal >= a`
 
 The first proof is stateless, i.e., can be verified without consulting the blockchain state.

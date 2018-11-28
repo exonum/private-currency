@@ -75,6 +75,21 @@ lazy_static! {
 /// constructed according to [the default scheme][`PedersenGens`] in the `bulletproofs`
 /// implementation.
 ///
+/// # Examples
+///
+/// ```
+/// # use private_currency::crypto::Commitment;
+/// let (mut commitment, mut opening) = Commitment::new(42);
+/// assert_eq!(opening.value, 42);
+/// assert_eq!(commitment, Commitment::from_opening(&opening));
+///
+/// let (other_commitment, other_opening) = Commitment::new(23);
+/// commitment -= other_commitment;
+/// opening -= other_opening;
+/// assert_eq!(opening.value, 19);
+/// assert_eq!(commitment, Commitment::from_opening(&opening));
+/// ```
+///
 /// [Pedersen commitment]: https://en.wikipedia.org/wiki/Commitment_scheme
 /// [Ristretto group]: https://ristretto.group/
 /// [`PedersenGens`]: https://doc.dalek.rs/bulletproofs/struct.PedersenGens.html
@@ -176,6 +191,12 @@ impl<'a, 'b> ops::Sub<&'b Commitment> for &'a Commitment {
         Commitment {
             inner: self.inner - rhs.inner,
         }
+    }
+}
+
+impl ops::SubAssign for Commitment {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.inner -= rhs.inner;
     }
 }
 
@@ -325,6 +346,17 @@ impl ops::SubAssign for Opening {
 /// We use the [`bulletproofs`] crate to implement proofs. The crate allows to efficiently prove
 /// several values at once, but this capability is not used as of now. Generators for proofs
 /// are initialized for a single party with `Self::BITS` range capacity.
+///
+/// # Examples
+///
+/// ```
+/// # use private_currency::crypto::{Commitment, SimpleRangeProof};
+/// let (commitment, opening) = Commitment::new(42_000_000);
+/// // We need an opening to produce the proof
+/// let proof = SimpleRangeProof::prove(&opening).unwrap();
+/// // ...but don't need one to verify it
+/// assert!(proof.verify(&commitment));
+/// ```
 ///
 /// [Bulletproofs]: https://eprint.iacr.org/2017/1066.pdf
 /// [`bulletproofs`]: https://doc.dalek.rs/bulletproofs/

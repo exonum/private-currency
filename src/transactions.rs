@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Transaction logic.
+//! Transaction logic of the service.
 
 use exonum::{
     blockchain::{ExecutionError, Transaction},
@@ -73,9 +73,11 @@ transactions! {
             /// Length of the wallet history as perceived by the wallet sender.
             ///
             /// This value may be lesser than the real wallet history length. What's important
-            /// is that `history_len` **must** not be less then [`last_send_index`] of the sender's
+            /// is that `history_len` must not be less then [`last_send_index`] of the sender's
             /// wallet (i.e., the sender must be aware of all her outgoing transfers).
-            /// If `history_len` *is* less, the transfer is considered invalid.
+            /// If `history_len` is less, the transfer is considered invalid.
+            ///
+            /// [`last_send_index`]: ::storage::Wallet::last_send_index()
             history_len: u64,
 
             /// Commitment to the transferred amount.
