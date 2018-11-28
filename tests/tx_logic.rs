@@ -59,11 +59,9 @@ fn create_2wallets_and_transfer_between_them() {
     let alice = schema
         .wallet(alice_sec.public_key())
         .expect("alice's wallet");
-    assert!(
-        alice
-            .balance()
-            .verify(&Opening::with_no_blinding(INITIAL_BALANCE))
-    );
+    assert!(alice
+        .balance()
+        .verify(&Opening::with_no_blinding(INITIAL_BALANCE)));
     assert!(schema.wallet(bob_sec.public_key()).is_some());
 
     // Check that `CreateWallet` transactions are properly recorded in wallet history.
@@ -83,17 +81,14 @@ fn create_2wallets_and_transfer_between_them() {
     let alice = schema
         .wallet(alice_sec.public_key())
         .expect("Alice's wallet");
-    assert!(
-        !alice
-            .balance()
-            .verify(&Opening::with_no_blinding(INITIAL_BALANCE))
-    );
+    assert!(!alice
+        .balance()
+        .verify(&Opening::with_no_blinding(INITIAL_BALANCE)));
     // Bob's balance, OTOH, should be intact.
     let bob = schema.wallet(bob_sec.public_key()).expect("Bob's wallet");
-    assert!(
-        bob.balance()
-            .verify(&Opening::with_no_blinding(INITIAL_BALANCE))
-    );
+    assert!(bob
+        .balance()
+        .verify(&Opening::with_no_blinding(INITIAL_BALANCE)));
 
     assert_eq!(
         schema.history(alice.public_key()),
@@ -230,16 +225,12 @@ fn unauthorized_accept() {
     );
     let schema = Schema::new(testkit.snapshot());
     let bob_wallet = schema.wallet(bob_sec.public_key()).expect("Bob's wallet");
-    assert!(
-        bob_wallet
-            .balance()
-            .verify(&Opening::with_no_blinding(INITIAL_BALANCE))
-    );
-    assert!(
-        schema
-            .unaccepted_transfers(bob_sec.public_key())
-            .contains(&transfer.hash())
-    );
+    assert!(bob_wallet
+        .balance()
+        .verify(&Opening::with_no_blinding(INITIAL_BALANCE)));
+    assert!(schema
+        .unaccepted_transfers(bob_sec.public_key())
+        .contains(&transfer.hash()));
 }
 
 fn accept_several_transfers<F>(accept_fn: F)
@@ -287,11 +278,9 @@ where
     accept_fn(&mut testkit, &accept_alice, &accept_bob);
 
     let schema = Schema::new(testkit.snapshot());
-    assert!(
-        schema
-            .unaccepted_transfers(&carol_sec.public_key())
-            .is_empty()
-    );
+    assert!(schema
+        .unaccepted_transfers(&carol_sec.public_key())
+        .is_empty());
     let history = schema.history(&carol_sec.public_key());
     assert_eq!(history.len(), 3);
 

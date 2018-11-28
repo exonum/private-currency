@@ -70,7 +70,8 @@ impl TrustAnchor {
                 self.validators
                     .get(id as usize)
                     .ok_or(BlockVerifyError::InvalidValidatorId)
-            }).collect();
+            })
+            .collect();
         let validators = validators?;
 
         if validators.iter().collect::<HashSet<_>>().len() != validators.len() {

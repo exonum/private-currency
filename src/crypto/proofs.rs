@@ -397,7 +397,8 @@ impl SimpleRangeProof {
             opening.value,
             &opening.blinding,
             Self::BITS,
-        ).ok()?;
+        )
+        .ok()?;
 
         Some(SimpleRangeProof { inner: proof })
     }
@@ -419,7 +420,8 @@ impl SimpleRangeProof {
                 &mut transcript,
                 &commitment.inner.compress(),
                 Self::BITS,
-            ).is_ok()
+            )
+            .is_ok()
     }
 
     /// Serializes this proof into bytes.
@@ -443,7 +445,8 @@ fn commitments_produced_by_bulletproofs_are_as_expected() {
         secret_value,
         &opening.blinding,
         32,
-    ).expect("prove_single");
+    )
+    .expect("prove_single");
 
     assert_eq!(
         simple_commitment,

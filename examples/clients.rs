@@ -433,7 +433,8 @@ fn main() {
                 let client = Client::new(env);
                 client.run();
             })
-        }).collect();
+        })
+        .collect();
 
     client_handles
         .into_iter()

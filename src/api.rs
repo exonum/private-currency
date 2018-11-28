@@ -172,8 +172,7 @@ pub enum VerifyError {
     /// Error verifying one of `MapProof`s included into the wallet proof.
     #[fail(
         display = "verifying `MapProof` for {} failed: {}",
-        proof_description,
-        error
+        proof_description, error
     )]
     MapProof {
         /// Cause of the verification failure.
@@ -186,8 +185,7 @@ pub enum VerifyError {
     /// Error verifying one of `ListProof`s included into the wallet proof.
     #[fail(
         display = "verifying `ListProof` for {} failed: {:?}",
-        proof_description,
-        error
+        proof_description, error
     )]
     ListProof {
         /// Cause of the verification failure.
@@ -198,10 +196,7 @@ pub enum VerifyError {
 
     /// A `ListProof` or `MapProof` is disconnected from its parent. In other words, the root hash
     /// of the index restored from the proof does not match one obtained from other proof data.
-    #[fail(
-        display = "Merkle proof for {} is disconnected from parent",
-        _0
-    )]
+    #[fail(display = "Merkle proof for {} is disconnected from parent", _0)]
     ProofDisconnect(ProofDescription),
 
     /// A `ListProof` or `MapProof` does not prove presence or absence of a key,
@@ -480,10 +475,7 @@ impl WalletContentsProof {
 }
 
 // Required for conversions in `Service::wire`.
-#[cfg_attr(
-    feature = "cargo-clippy",
-    allow(clippy::needless_pass_by_value)
-)]
+#[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
 impl Api {
     /// Returns information about a single wallet. The information is supported with
     /// cryptographic proofs, allowing client applications to minimize trust in their server
