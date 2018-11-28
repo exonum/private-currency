@@ -75,3 +75,11 @@ script:
   cargo clean --doc &&
   cargo rustdoc -- -Z unstable-options --html-in-header misc/hide-blanket-impls.html --extern-html-root-url exonum=https://docs.rs/exonum/0.9.4 &&
   cargo deadlinks --dir target/doc
+
+deploy:
+  provider: pages
+  local-dir: target/doc
+  skip-cleanup: true
+  github-token: $GITHUB_TOKEN
+  on:
+    branch: master
