@@ -1,7 +1,7 @@
 [package]
 name = "private-currency"
 version = "0.1.0"
-authors = ["Alex Ostrovski <ostrovski.alex@gmail.com>"]
+authors = ["The Exonum Team <exonum@bitfury.com>"]
 license = "Apache-2.0"
 publish = false
 exclude = ["misc/*"]
