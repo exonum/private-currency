@@ -15,7 +15,7 @@
 #![feature(external_doc)]
 #![deny(missing_docs, missing_debug_implementations)]
 
-//! Privacy-focused Exonum serv ice. The service hides the amounts being
+//! Privacy-focused Exonum service. The service hides the amounts being
 //! transferred among registered accounts (but not the identities of transacting accounts).
 //!
 #![doc(include = "../docs/implementation.md")]
