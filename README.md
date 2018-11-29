@@ -9,6 +9,9 @@
 This is an [Exonum] service implementing a privacy-preserving cryptocurrency. The service hides the amounts being
 transferred among registered accounts (but not the identities of transacting accounts).
 
+Behind the scenes, the service uses [the Rust implementation][bulletproofs-rs] of [Bulletproofs], a particular
+type of zero-knowledge proofs.
+
 **Warning.** This is a proof of concept; it has not been tested and fitted for production. Use at your own risk.
 
 ## Description
@@ -26,7 +29,5 @@ Licensed under the Apache License (Version 2.0). See [LICENSE](LICENSE) for deta
 
 [Exonum]: https://exonum.com/
 [bulletproofs-rs]: https://doc.dalek.rs/bulletproofs/
-[bulletproofs]: https://eprint.iacr.org/2017/1066.pdf
-[pedersen]: https://en.wikipedia.org/wiki/Commitment_scheme
-[demo]: https://github.com/exonum/exonum/tree/master/examples
-[crate-doc]: https://exonum.github.io/private-currency/private_currency
+[Bulletproofs]: https://eprint.iacr.org/2017/1066.pdf
+[crate-doc]: https://exonum.github.io/private-currency/private_currency/
