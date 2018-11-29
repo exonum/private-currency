@@ -12,41 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! This example spins a single-node blockchain network with several clients (i.e., entities
-//! owning cryptocurrency accounts). The clients run in separate threads and connect to the node
-//! via HTTP API both to send transactions and update their secret state, thus simulating
-//! real client behavior.
-//!
-//! Run with
-//!
-//! ```shell
-//! RUST_LOG=clients=info cargo run --example clients
-//! ```
-
-extern crate exonum;
-#[macro_use]
-extern crate log;
-extern crate private_currency;
-extern crate rand;
-extern crate reqwest;
-extern crate tempdir;
-
 use exonum::{
     api::node::public::explorer::TransactionQuery,
-    blockchain::{GenesisConfig, ValidatorKeys},
     crypto::{CryptoHash, Hash, PublicKey},
     explorer::TransactionInfo,
-    node::{Node, NodeApiConfig, NodeConfig},
-    storage::{DbOptions, RocksDB},
 };
 use private_currency::{
     api::{CheckedWalletProof, FullEvent, TrustAnchor, WalletProof, WalletQuery},
     transactions::{Accept, CreateWallet, Transfer},
-    DebugEvent, DebuggerOptions, SecretState, Service as CurrencyService, CONFIG,
+    SecretState, CONFIG,
 };
 use rand::{seq::sample_iter, thread_rng, Rng};
 use reqwest::Client as HttpClient;
-use tempdir::TempDir;
 
 use std::{
     cmp,
@@ -56,17 +33,21 @@ use std::{
     time::Duration,
 };
 
-/// Number of clients to emulate.
-const CLIENT_COUNT: usize = 5;
+#[derive(Debug, Clone, Copy)]
+pub struct ClientConfig {
+    pub sleep_probability: f64,
+    pub sleep_duration: Duration,
+    pub time_lock: u32,
+}
 
 #[derive(Debug, Clone)]
-struct ClientEnv {
+pub struct ClientEnv {
     keys: Arc<RwLock<HashSet<PublicKey>>>,
     trust_anchor: TrustAnchor,
 }
 
 impl ClientEnv {
-    fn new<I>(consensus_keys: I) -> Self
+    pub fn new<I>(consensus_keys: I) -> Self
     where
         I: IntoIterator<Item = PublicKey>,
     {
@@ -94,6 +75,24 @@ impl ClientEnv {
             })
         }
     }
+
+    pub fn run(self, client_count: usize, config: ClientConfig) {
+        let client_handles: Vec<_> = (0..client_count)
+            .map(|_| {
+                let env = self.clone();
+                thread::spawn(move || {
+                    let client = Client::new(env, config);
+                    client.run();
+                })
+            })
+            .collect();
+
+        client_handles
+            .into_iter()
+            .map(|handle| handle.join())
+            .collect::<Result<(), _>>()
+            .unwrap();
+    }
 }
 
 #[derive(Debug)]
@@ -103,6 +102,7 @@ struct Client {
     events: Vec<FullEvent>,
     client_env: ClientEnv,
     unconfirmed_transfer: Option<Hash>,
+    config: ClientConfig,
 }
 
 impl Client {
@@ -112,7 +112,7 @@ impl Client {
         "http://127.0.0.1:8080/api/services/private_currency/v1/transaction";
     const TX_STATUS_URL: &'static str = "http://127.0.0.1:8080/api/explorer/v1/transactions";
 
-    fn new(client_env: ClientEnv) -> Self {
+    fn new(client_env: ClientEnv, config: ClientConfig) -> Self {
         let state = SecretState::with_random_keypair();
         client_env.add(*state.public_key());
 
@@ -122,6 +122,7 @@ impl Client {
             events: vec![],
             client_env,
             unconfirmed_transfer: None,
+            config,
         };
         client.log_info("started");
         client
@@ -319,6 +320,8 @@ impl Client {
             thread::sleep(Duration::from_millis(rng.gen_range(2_000, 3_000)));
         };
 
+        let config = self.config;
+
         let mut rng = thread_rng();
         let create_wallet = self.state.create_wallet();
         self.send_create_wallet(&create_wallet);
@@ -337,110 +340,16 @@ impl Client {
                     CONFIG.min_transfer_amount,
                     cmp::min(10_000, self.state.balance()),
                 );
-                let transfer = self.state.create_transfer(amount, &peer, 10);
+                let transfer = self.state.create_transfer(amount, &peer, config.time_lock);
                 self.send_transfer(&transfer, amount);
             }
 
             sleep();
-            if rng.gen::<u8>() < 16 {
+            if rng.gen::<f64>() < config.sleep_probability {
                 // Simulate going offline for a while.
                 self.log_info("going offline");
-                thread::sleep(Duration::from_millis(7_000));
+                thread::sleep(config.sleep_duration);
             }
         }
     }
-}
-
-fn node_config() -> NodeConfig {
-    let (consensus_public_key, consensus_secret_key) = exonum::crypto::gen_keypair();
-    let (service_public_key, service_secret_key) = exonum::crypto::gen_keypair();
-
-    let validator_keys = ValidatorKeys {
-        consensus_key: consensus_public_key,
-        service_key: service_public_key,
-    };
-    let genesis = GenesisConfig::new(vec![validator_keys].into_iter());
-
-    let api_address = "127.0.0.1:8080".parse().unwrap();
-    let api_cfg = NodeApiConfig {
-        public_api_address: Some(api_address),
-        ..Default::default()
-    };
-
-    let peer_address = "127.0.0.1:2000".parse().unwrap();
-
-    NodeConfig {
-        listen_address: peer_address,
-        service_public_key,
-        service_secret_key,
-        consensus_public_key,
-        consensus_secret_key,
-        genesis,
-        external_address: peer_address,
-        network: Default::default(),
-        connect_list: Default::default(),
-        api: api_cfg,
-        mempool: Default::default(),
-        services_configs: Default::default(),
-        database: Default::default(),
-    }
-}
-
-fn main() {
-    exonum::helpers::init_logger().unwrap();
-
-    let node_cfg = node_config();
-    let consensus_keys = vec![node_cfg.consensus_public_key];
-
-    let (service, debugger) = CurrencyService::debug(DebuggerOptions {
-        check_invariants: true,
-    });
-    let debug_handle = thread::spawn(|| {
-        for event in debugger {
-            match event {
-                DebugEvent::RolledBack { height, transfer } => {
-                    warn!(
-                        "rolled back transfer from {:?} to {:?}, tx_hash {:?}, at height {}",
-                        transfer.from(),
-                        transfer.to(),
-                        transfer.hash(),
-                        height
-                    );
-                }
-            }
-        }
-    });
-
-    // Start node thread.
-    let handle = thread::spawn(|| {
-        info!("Creating database...");
-        let dir = TempDir::new("exonum").expect("tempdir");
-        let db = RocksDB::open(dir.path(), &DbOptions::default()).expect("rocksdb");
-
-        let node = Node::new(db, vec![Box::new(service)], node_cfg, None);
-        info!("Starting a single node...");
-        info!("Blockchain is ready for transactions!");
-        node.run().unwrap();
-    });
-
-    thread::sleep(Duration::from_millis(2_000));
-    info!("Starting clients");
-    let client_env = ClientEnv::new(consensus_keys);
-    let client_handles: Vec<_> = (0..CLIENT_COUNT)
-        .map(|_| {
-            let env = client_env.clone();
-            thread::spawn(move || {
-                let client = Client::new(env);
-                client.run();
-            })
-        })
-        .collect();
-
-    client_handles
-        .into_iter()
-        .map(|handle| handle.join())
-        .collect::<Result<(), _>>()
-        .unwrap();
-    handle.join().unwrap();
-    debug_handle.join().unwrap();
 }
