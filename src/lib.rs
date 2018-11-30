@@ -14,6 +14,7 @@
 
 #![feature(external_doc)]
 #![deny(missing_docs, missing_debug_implementations)]
+#![doc(html_favicon_url = "https://exonum.com/favicon.ico")]
 
 //! Privacy-focused Exonum service. The service hides the amounts being
 //! transferred among registered accounts (but not the identities of transacting accounts).
