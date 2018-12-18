@@ -7,12 +7,12 @@ publish = false
 exclude = ["misc/*"]
 
 [dependencies]
-exonum = "=0.9.4"
+exonum = "=0.9.5"
 exonum_sodiumoxide = "0.0.20"
 bulletproofs = "=1.0.0-pre.0"
 curve25519-dalek = "=1.0.0-pre.0"
 merlin = "=1.0.0-pre.0"
-rand = "0.5.0"
+rand = "0.5.5"
 lazy_static = "1.0"
 byteorder = "1.2.7"
 failure = "=0.1.3"
