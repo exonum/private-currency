@@ -1,0 +1,10 @@
+(function() {var implementors = {};
+implementors["private_currency"] = [{text:"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/hash/trait.Hash.html\" title=\"trait core::hash::Hash\">Hash</a> for <a class=\"enum\" href=\"private_currency/api/enum.ProofDescription.html\" title=\"enum private_currency::api::ProofDescription\">ProofDescription</a>",synthetic:false,types:["private_currency::api::ProofDescription"]},{text:"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/hash/trait.Hash.html\" title=\"trait core::hash::Hash\">Hash</a> for <a class=\"struct\" href=\"private_currency/storage/struct.Event.html\" title=\"struct private_currency::storage::Event\">Event</a>",synthetic:false,types:["private_currency::storage::Event"]},{text:"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/hash/trait.Hash.html\" title=\"trait core::hash::Hash\">Hash</a> for <a class=\"enum\" href=\"private_currency/transactions/enum.Error.html\" title=\"enum private_currency::transactions::Error\">Error</a>",synthetic:false,types:["private_currency::transactions::Error"]},{text:"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/hash/trait.Hash.html\" title=\"trait core::hash::Hash\">Hash</a> for <a class=\"enum\" href=\"private_currency/api/enum.BlockVerifyError.html\" title=\"enum private_currency::api::BlockVerifyError\">BlockVerifyError</a>",synthetic:false,types:["private_currency::utils::BlockVerifyError"]},{text:"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/hash/trait.Hash.html\" title=\"trait core::hash::Hash\">Hash</a> for <a class=\"struct\" href=\"private_currency/struct.Config.html\" title=\"struct private_currency::Config\">Config</a>",synthetic:false,types:["private_currency::Config"]},];
+
+            if (window.register_implementors) {
+                window.register_implementors(implementors);
+            } else {
+                window.pending_implementors = implementors;
+            }
+        
+})()

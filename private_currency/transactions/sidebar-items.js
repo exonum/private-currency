@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["CryptoTransactions","Transactions accepted by the service."],["Error","Errors that can occur during transaction processing."]],"struct":[["Accept","Transaction to accept an incoming transfer."],["CreateWallet","Transaction for creating a new wallet."],["Transfer","Transfer from one wallet to another wallet."]]});

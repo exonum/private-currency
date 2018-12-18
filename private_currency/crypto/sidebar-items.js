@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["enc","Reexports from the `box` module (i.e., public-key encryption with Curve25519 keys) in the `sodiumoxide` crate."]],"struct":[["Commitment","Pedersen commitment to an integer value."],["Opening","Opening for a Pedersen commitment."],["SimpleRangeProof","Range proof for a single value in the range `[0; 1 << 64)`."]]});

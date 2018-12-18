@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Event","Storage representation of an event concerning a wallet."],["Schema","Schema for the private currency service."],["Wallet","Wallet summary."],["WalletInfo","Gist of information about the wallet, stripped of auxiliary data."]]});
