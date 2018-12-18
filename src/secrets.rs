@@ -44,8 +44,8 @@ encoding_struct! {
 }
 
 impl EncryptedData {
-    /// Encrypts data based on sender's private encryption key
-    /// and the receiver's public one.
+    /// Encrypts data based on sender’s private encryption key
+    /// and the receiver’s public one.
     fn seal(message: &[u8], receiver: &enc::PublicKey, sender_sk: &enc::SecretKey) -> Self {
         let nonce = enc::gen_nonce();
         let encrypted_data = enc::seal(message, &nonce, receiver, sender_sk);
@@ -53,17 +53,17 @@ impl EncryptedData {
         EncryptedData::new(nonce.as_ref(), &encrypted_data)
     }
 
-    /// Decrypts data based on sender's public encryption key
-    /// and the receiver's secret one.
+    /// Decrypts data based on sender’s public encryption key
+    /// and the receiver’s secret one.
     fn open(&self, sender: &enc::PublicKey, receiver_sk: &enc::SecretKey) -> Option<Vec<u8>> {
         let nonce = enc::Nonce::from_slice(self.nonce())?;
         enc::open(self.encrypted_data(), &nonce, sender, receiver_sk).ok()
     }
 
-    /// Decrypts data based on sender's private encryption key
-    /// and the receiver's public one.
+    /// Decrypts data based on sender’s private encryption key
+    /// and the receiver’s public one.
     // This is possible as `box` uses Diffie-Hellman key exchange to derive a shared secret
-    // for encryption with a symmetric cipher. It's enough to know one secret key to restore
+    // for encryption with a symmetric cipher. It’s enough to know one secret key to restore
     // this shared secret.
     fn open_as_sender(
         &self,
@@ -98,8 +98,8 @@ pub struct SecretState {
     // in order to produce `Transfer`s and possibly for other tasks (such as proving
     // bounds on the balance to off-chain parties). If the opening is lost,
     // the wallet owner can no longer perform these tasks. Fortunately, with the given
-    // design, it's always possible (and quite easy) to restore the opening from scratch
-    // provided that the owner knows the secret key to the wallet; indeed, it's enough
+    // design, it’s always possible (and quite easy) to restore the opening from scratch
+    // provided that the owner knows the secret key to the wallet; indeed, it’s enough
     // to download wallet history anew and replay it.
     balance_opening: Opening,
 
@@ -116,7 +116,7 @@ impl fmt::Debug for SecretState {
 }
 
 /// Information about an incoming transfer successfully verified w.r.t. the `SecretState`
-/// of the receiver's wallet.
+/// of the receiver’s wallet.
 #[derive(Debug)]
 pub struct VerifiedTransfer {
     /// Opening for the transferred amount.
@@ -396,7 +396,7 @@ mod tests {
         let (receiver, _) = gen_keypair();
         let (committed_amount, opening) = Commitment::new(0);
 
-        // This intentionally deviates from the proper procedure - we don't subtract
+        // This intentionally deviates from the proper procedure - we don’t subtract
         // `MIN_AMOUNT_OPENING` from the `opening`.
         let amount_proof = SimpleRangeProof::prove(&opening).expect("prove amount");
 

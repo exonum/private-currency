@@ -37,7 +37,7 @@ const PAST_BALANCES: &str = "private_currency.past_balances";
 lazy_static! {
     /// Commitment to the initial balance of a wallet.
     ///
-    /// We don't use a blinding factor for the commitment since we assume
+    /// We don’t use a blinding factor for the commitment since we assume
     /// that the initial balance of a wallet is a public constant.
     static ref INITIAL_BALANCE: Commitment = Commitment::with_no_blinding(CONFIG.initial_balance);
 }
@@ -421,7 +421,7 @@ impl<'a> Schema<&'a mut Fork> {
             payments.merkle_root()
         };
 
-        // Update the receiver's wallet.
+        // Update the receiver’s wallet.
         let transfer_amount = transfer.amount();
         let receiver_wallet = self.wallet(receiver).ok_or(Error::UnregisteredReceiver)?;
         let receiver_wallet = receiver_wallet

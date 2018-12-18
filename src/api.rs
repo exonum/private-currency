@@ -42,7 +42,7 @@ pub enum Api {}
 pub struct WalletQuery {
     /// Public key of the account to check.
     pub key: PublicKey,
-    /// The starting index for the user's list of events.
+    /// The starting index for the user’s list of events.
     pub start_history_at: u64,
 }
 
@@ -56,7 +56,7 @@ pub enum FullEvent {
 
     /// Transfer to or from the wallet.
     ///
-    /// Note that outgoing transfers are recorded in the sender's history immediately after
+    /// Note that outgoing transfers are recorded in the sender’s history immediately after
     /// the commitment. The incoming transfers, on the other hand, need to be [`Accept`]ed.
     ///
     /// [`Accept`]: ::transactions::Accept
@@ -153,7 +153,7 @@ pub struct CheckedWalletProof {
 }
 
 /// Part of a `WalletProof` related to auxiliary tables (wallet history and unaccepted transfers).
-// This struct is inlined into the parent, so it's not public.
+// This struct is inlined into the parent, so it’s not public.
 #[derive(Debug, Serialize, Deserialize)]
 struct WalletContentsProof {
     history: Vec<FullEvent>,

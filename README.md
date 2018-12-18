@@ -20,7 +20,7 @@ See [implementation details](docs/implementation.md) and [service crate docs][cr
 
 ## Building and testing
 
-Notice that the service requires `nightly` Rust channel as of now; the `bulletproofs` crate doesn't build otherwise.
+Notice that the service requires `nightly` Rust channel as of now; the `bulletproofs` crate doesn’t build otherwise.
 There are some unit and integration tests and also examples. See their documentation for more details.
 
 ## License

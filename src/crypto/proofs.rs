@@ -46,14 +46,14 @@ lazy_static! {
 ///
 /// - `G` and `H` are two generators in a prime-order group `Q`, with unknown discrete logarithm
 ///   relationships among them (i.e., nobody knows `k` such as `G = kH`)
-/// - `x` is the committed value (it's a residue class modulo the group order `|Q|`,
+/// - `x` is the committed value (it’s a residue class modulo the group order `|Q|`,
 ///   but we may *essentially* treat it as an integer)
 /// - `r` is the blinding factor (also a residue class modulo the group order `|Q|`). Usually,
-///   it's chosen randomly from a cryptographically secure RNG.
+///   it’s chosen randomly from a cryptographically secure RNG.
 ///
 /// `Q`, `G` and `H` are public parameters of the scheme shared among all commitments,
 /// while `x` and `r` are private.
-/// `(x, r)` is called an *opening* to the commitment; knowing the opening, it's easy to check
+/// `(x, r)` is called an *opening* to the commitment; knowing the opening, it’s easy to check
 /// if it corresponds to the given commitment.
 ///
 /// Under common security assumptions, a Pedersen commitment is
@@ -122,7 +122,7 @@ impl Commitment {
     /// Creates a commitment with no blinding factor.
     ///
     /// **Warning.** The commitments created in this way are not hiding. Use them only if you
-    /// know what you're doing.
+    /// know what you’re doing.
     pub fn with_no_blinding(value: u64) -> Self {
         Self::from_opening(&Opening::new(value, Scalar::zero()))
     }
@@ -354,7 +354,7 @@ impl ops::SubAssign for Opening {
 /// let (commitment, opening) = Commitment::new(42_000_000);
 /// // We need an opening to produce the proof
 /// let proof = SimpleRangeProof::prove(&opening).unwrap();
-/// // ...but don't need one to verify it
+/// // ...but don’t need one to verify it
 /// assert!(proof.verify(&commitment));
 /// ```
 ///

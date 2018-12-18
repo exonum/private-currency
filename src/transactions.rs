@@ -72,8 +72,8 @@ transactions! {
 
             /// Length of the wallet history as perceived by the wallet sender.
             ///
-            /// This value may be lesser than the real wallet history length. What's important
-            /// is that `history_len` must not be less then [`last_send_index`] of the sender's
+            /// This value may be lesser than the real wallet history length. What’s important
+            /// is that `history_len` must not be less then [`last_send_index`] of the sender’s
             /// wallet (i.e., the sender must be aware of all her outgoing transfers).
             /// If `history_len` is less, the transfer is considered invalid.
             ///
@@ -86,7 +86,7 @@ transactions! {
             /// Proof that `amount` is positive.
             amount_proof: SimpleRangeProof,
 
-            /// Proof that the sender's balance is sufficient relative to `amount`.
+            /// Proof that the sender’s balance is sufficient relative to `amount`.
             sufficient_balance_proof: SimpleRangeProof,
 
             /// Encryption of the opening for `amount`.
@@ -217,10 +217,10 @@ pub enum Error {
     #[fail(display = "the receiver of a transfer is not registered")]
     UnregisteredReceiver = 2,
 
-    /// The range proof for the sender's sufficient account balance is incorrect.
+    /// The range proof for the sender’s sufficient account balance is incorrect.
     ///
     /// Can occur in [`Transfer`](self::Transfer).
-    #[fail(display = "the range proof for the sender's sufficient account balance is incorrect")]
+    #[fail(display = "the range proof for the sender’s sufficient account balance is incorrect")]
     IncorrectProof = 3,
 
     /// There has been another outgoing transfer since the referenced point in time.
